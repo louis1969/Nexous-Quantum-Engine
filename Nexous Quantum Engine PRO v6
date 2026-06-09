@@ -1,0 +1,226 @@
+//@version=6
+indicator("Nexous Quantum Engine PRO v6", shorttitle="Nexous Quantum PRO v6", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=200)
+
+// ───────────────────────────── Inputs ─────────────────────────────
+grpStruct = "Market structure"
+swingLen     = input.int(5, "Swing length (pivot)", minval=2, maxval=50, group=grpStruct)
+showBOS      = input.bool(true, "Show BOS labels", group=grpStruct)
+showCHoCH    = input.bool(true, "Show CHoCH labels", group=grpStruct)
+showTrendLine = input.bool(true, "Show trend line", group=grpStruct)
+labelColor    = input.color(color.white, "Labels / text color", group=grpStruct)
+trendLineColor = input.color(color.new(color.blue, 0), "Trend line color", group=grpStruct)
+
+grpFib = "Fibonacci entry zone"
+showEntryZone = input.bool(true, "Show entry zone (fibonacci)", group=grpFib)
+fibTop    = input.float(0.618, "Fib top (golden zone start)", minval=0.0, maxval=1.0, step=0.01, group=grpFib)
+fibBottom = input.float(0.786, "Fib bottom (golden zone end)", minval=0.0, maxval=1.0, step=0.01, group=grpFib)
+entryZoneColor = input.color(color.new(color.yellow, 70), "Entry zone color", group=grpFib)
+zoneWidth = input.int(30, "Zone / line width (bars)", minval=5, maxval=100, group=grpFib)
+
+grpTargets = "Target / stop loss"
+showTarget   = input.bool(true, "Show target line", group=grpTargets)
+showStopLoss = input.bool(true, "Show stop loss line", group=grpTargets)
+targetColor  = input.color(color.new(color.aqua, 0), "Target line color", group=grpTargets)
+stopColor    = input.color(color.new(color.red, 0), "Stop loss line color", group=grpTargets)
+
+grpTable = "Dashboard"
+showTable      = input.bool(true, "Show dashboard table", group=grpTable)
+tableTimeframe = input.string("1m", "Timeframe shown on table", options=["1m", "3m", "5m"], group=grpTable)
+tableSizeOpt   = input.string("Small", "Table size", options=["Auto", "Extremely Small", "Small", "Medium", "Large", "Extremely Large"], group=grpTable)
+tablePosOpt    = input.string("Top Right", "Table position", options=["Top Right", "Middle Right", "Bottom Right", "Middle Left", "Bottom Left"], group=grpTable)
+
+grpSessions = "Trading sessions (exchange time)"
+asiaSession    = input.session("0300-1100", "Asia session (Tokyo / Hong Kong / Shanghai)", group=grpSessions)
+londonSession  = input.session("1000-1830", "London session", group=grpSessions)
+newYorkSession = input.session("1630-2300", "New York session", group=grpSessions)
+
+// ───────────────────────────── Helpers ─────────────────────────────
+tableSizeFromInput(sizeStr) =>
+    switch sizeStr
+        "Auto"             => size.auto
+        "Extremely Small"  => size.tiny
+        "Small"            => size.small
+        "Medium"           => size.normal
+        "Large"            => size.large
+        "Extremely Large"  => size.huge
+        => size.small
+
+tablePositionFromInput(posStr) =>
+    switch posStr
+        "Top Right"     => position.top_right
+        "Middle Right"  => position.middle_right
+        "Bottom Right"  => position.bottom_right
+        "Middle Left"   => position.middle_left
+        "Bottom Left"   => position.bottom_left
+        => position.top_right
+
+tblTextSize = tableSizeFromInput(tableSizeOpt)
+tblPosition = tablePositionFromInput(tablePosOpt)
+
+// ───────────────────────────── Swing detection ─────────────────────────────
+var float swingHighVal = na
+var int   swingHighIdx = na
+var float prevSwingHighVal = na
+var int   prevSwingHighIdx = na
+
+var float swingLowVal = na
+var int   swingLowIdx = na
+var float prevSwingLowVal = na
+var int   prevSwingLowIdx = na
+
+ph = ta.pivothigh(swingLen, swingLen)
+pl = ta.pivotlow(swingLen, swingLen)
+
+if not na(ph)
+    prevSwingHighVal := swingHighVal
+    prevSwingHighIdx := swingHighIdx
+    swingHighVal := ph
+    swingHighIdx := bar_index - swingLen
+
+if not na(pl)
+    prevSwingLowVal := swingLowVal
+    prevSwingLowIdx := swingLowIdx
+    swingLowVal := pl
+    swingLowIdx := bar_index - swingLen
+
+// ───────────────────────────── Structure breaks ─────────────────────────────
+var int trend = 0   // 1 = bullish, -1 = bearish, 0 = neutral
+var string lastSignalText = "—"
+
+bullishBreak = not na(swingHighVal) and ta.crossover(close, swingHighVal)
+bearishBreak = not na(swingLowVal) and ta.crossunder(close, swingLowVal)
+
+isCHoCHBull = bullishBreak and trend <= 0
+isBOSBull   = bullishBreak and trend == 1
+isCHoCHBear = bearishBreak and trend >= 0
+isBOSBear   = bearishBreak and trend == -1
+
+// ───────────────────────────── Drawing objects (kept alive) ─────────────────────────────
+var line  trendLine    = na
+var box   entryZoneBox = na
+var line  targetLine   = na
+var line  stopLine     = na
+var label targetLabel  = na
+var label stopLabel    = na
+
+// ───────────────────────────── Bullish CHoCH / BOS ─────────────────────────────
+if isCHoCHBull
+    trend := 1
+    lastSignalText := "CHoCH ↑ (bullish reversal)"
+
+    if showCHoCH
+        label.new(bar_index, swingHighVal, "CHoCH", style=label.style_label_down, color=color.new(color.black, 100), textcolor=labelColor, size=size.small)
+
+    if showTrendLine and not na(prevSwingHighIdx)
+        line.delete(trendLine)
+        trendLine := line.new(prevSwingHighIdx, prevSwingHighVal, swingHighIdx, swingHighVal, color=trendLineColor, width=2, extend=extend.none)
+        label.new(prevSwingHighIdx + math.round((swingHighIdx - prevSwingHighIdx) / 2), math.max(prevSwingHighVal, swingHighVal), "Trend Line", style=label.style_label_down, color=color.new(color.black, 100), textcolor=labelColor, size=size.tiny)
+
+    if not na(swingLowVal)
+        impulseHigh = high
+        impulseLow  = swingLowVal
+        rangeMove   = impulseHigh - impulseLow
+        zoneTop     = impulseHigh - rangeMove * fibTop
+        zoneBottom  = impulseHigh - rangeMove * fibBottom
+
+        if showEntryZone
+            box.delete(entryZoneBox)
+            entryZoneBox := box.new(bar_index, zoneTop, bar_index + zoneWidth, zoneBottom, border_color=color.new(labelColor, 40), bgcolor=entryZoneColor, text="Entry Zone", text_color=labelColor, text_size=size.small)
+
+        if showTarget and not na(prevSwingHighVal)
+            line.delete(targetLine)
+            label.delete(targetLabel)
+            targetLine  := line.new(bar_index, prevSwingHighVal, bar_index + zoneWidth, prevSwingHighVal, color=targetColor, width=2, style=line.style_dashed)
+            targetLabel := label.new(bar_index + zoneWidth, prevSwingHighVal, "Target", style=label.style_label_left, textcolor=labelColor, color=color.new(color.black, 100), size=size.small)
+
+        if showStopLoss
+            slLevel = zoneBottom - rangeMove * 0.15
+            line.delete(stopLine)
+            label.delete(stopLabel)
+            stopLine  := line.new(bar_index, slLevel, bar_index + zoneWidth, slLevel, color=stopColor, width=2, style=line.style_dashed)
+            stopLabel := label.new(bar_index + zoneWidth, slLevel, "Stop Loss", style=label.style_label_left, textcolor=labelColor, color=color.new(color.black, 100), size=size.small)
+
+if isBOSBull and showBOS
+    label.new(bar_index, low, "BOS", style=label.style_label_up, color=color.new(color.black, 100), textcolor=labelColor, size=size.small)
+    lastSignalText := "BOS ↑ (bullish continuation)"
+
+// ───────────────────────────── Bearish CHoCH / BOS ─────────────────────────────
+if isCHoCHBear
+    trend := -1
+    lastSignalText := "CHoCH ↓ (bearish reversal)"
+
+    if showCHoCH
+        label.new(bar_index, swingLowVal, "CHoCH", style=label.style_label_up, color=color.new(color.black, 100), textcolor=labelColor, size=size.small)
+
+    if showTrendLine and not na(prevSwingLowIdx)
+        line.delete(trendLine)
+        trendLine := line.new(prevSwingLowIdx, prevSwingLowVal, swingLowIdx, swingLowVal, color=trendLineColor, width=2, extend=extend.none)
+        label.new(prevSwingLowIdx + math.round((swingLowIdx - prevSwingLowIdx) / 2), math.min(prevSwingLowVal, swingLowVal), "Trend Line", style=label.style_label_up, color=color.new(color.black, 100), textcolor=labelColor, size=size.tiny)
+
+    if not na(swingHighVal)
+        impulseLow  = low
+        impulseHigh = swingHighVal
+        rangeMove   = impulseHigh - impulseLow
+        zoneBottom  = impulseLow + rangeMove * fibTop
+        zoneTop     = impulseLow + rangeMove * fibBottom
+
+        if showEntryZone
+            box.delete(entryZoneBox)
+            entryZoneBox := box.new(bar_index, zoneTop, bar_index + zoneWidth, zoneBottom, border_color=color.new(labelColor, 40), bgcolor=entryZoneColor, text="Entry Zone", text_color=labelColor, text_size=size.small)
+
+        if showTarget and not na(prevSwingLowVal)
+            line.delete(targetLine)
+            label.delete(targetLabel)
+            targetLine  := line.new(bar_index, prevSwingLowVal, bar_index + zoneWidth, prevSwingLowVal, color=targetColor, width=2, style=line.style_dashed)
+            targetLabel := label.new(bar_index + zoneWidth, prevSwingLowVal, "Target", style=label.style_label_left, textcolor=labelColor, color=color.new(color.black, 100), size=size.small)
+
+        if showStopLoss
+            slLevel = zoneTop + rangeMove * 0.15
+            line.delete(stopLine)
+            label.delete(stopLabel)
+            stopLine  := line.new(bar_index, slLevel, bar_index + zoneWidth, slLevel, color=stopColor, width=2, style=line.style_dashed)
+            stopLabel := label.new(bar_index + zoneWidth, slLevel, "Stop Loss", style=label.style_label_left, textcolor=labelColor, color=color.new(color.black, 100), size=size.small)
+
+if isBOSBear and showBOS
+    label.new(bar_index, high, "BOS", style=label.style_label_down, color=color.new(color.black, 100), textcolor=labelColor, size=size.small)
+    lastSignalText := "BOS ↓ (bearish continuation)"
+
+// ───────────────────────────── Trading sessions ─────────────────────────────
+inAsia    = not na(time(timeframe.period, asiaSession))
+inLondon  = not na(time(timeframe.period, londonSession))
+inNewYork = not na(time(timeframe.period, newYorkSession))
+
+bgcolor(inAsia ? color.new(color.orange, 95) : na, title="Asia session background")
+bgcolor(inLondon ? color.new(color.blue, 95) : na, title="London session background")
+bgcolor(inNewYork ? color.new(color.purple, 95) : na, title="New York session background")
+
+// ───────────────────────────── Dashboard table ─────────────────────────────
+var table dashboard = table.new(tblPosition, 2, 8, bgcolor=color.new(color.black, 15), border_color=color.new(color.white, 60), border_width=1, frame_color=color.new(color.white, 60), frame_width=1)
+
+if showTable and barstate.islast
+    trendText  = trend == 1 ? "Bullish" : trend == -1 ? "Bearish" : "Neutral"
+    trendColor = trend == 1 ? color.new(color.green, 0) : trend == -1 ? color.new(color.red, 0) : color.new(color.gray, 0)
+
+    table.cell(dashboard, 0, 0, "Nexous Quantum Engine PRO v6", text_color=labelColor, bgcolor=color.new(color.blue, 60), text_size=tblTextSize)
+    table.merge_cells(dashboard, 0, 0, 1, 0)
+
+    table.cell(dashboard, 0, 1, "Timeframe", text_color=labelColor, text_size=tblTextSize)
+    table.cell(dashboard, 1, 1, tableTimeframe, text_color=labelColor, text_size=tblTextSize)
+
+    table.cell(dashboard, 0, 2, "Trend", text_color=labelColor, text_size=tblTextSize)
+    table.cell(dashboard, 1, 2, trendText, text_color=trendColor, text_size=tblTextSize)
+
+    table.cell(dashboard, 0, 3, "Last signal", text_color=labelColor, text_size=tblTextSize)
+    table.cell(dashboard, 1, 3, lastSignalText, text_color=labelColor, text_size=tblTextSize)
+
+    table.cell(dashboard, 0, 4, "Asia session", text_color=labelColor, text_size=tblTextSize)
+    table.cell(dashboard, 1, 4, inAsia ? "Active" : "Closed", text_color=inAsia ? color.new(color.green, 0) : color.new(color.gray, 0), text_size=tblTextSize)
+
+    table.cell(dashboard, 0, 5, "London session", text_color=labelColor, text_size=tblTextSize)
+    table.cell(dashboard, 1, 5, inLondon ? "Active" : "Closed", text_color=inLondon ? color.new(color.green, 0) : color.new(color.gray, 0), text_size=tblTextSize)
+
+    table.cell(dashboard, 0, 6, "New York session", text_color=labelColor, text_size=tblTextSize)
+    table.cell(dashboard, 1, 6, inNewYork ? "Active" : "Closed", text_color=inNewYork ? color.new(color.green, 0) : color.new(color.gray, 0), text_size=tblTextSize)
+
+    table.cell(dashboard, 0, 7, "Swing length", text_color=labelColor, text_size=tblTextSize)
+    table.cell(dashboard, 1, 7, str.tostring(swingLen), text_color=labelColor, text_size=tblTextSize)
