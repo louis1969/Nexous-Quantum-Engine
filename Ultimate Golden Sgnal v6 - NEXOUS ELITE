@@ -1,0 +1,122 @@
+//@version=6
+// ==========================================
+// ULTIMATE GOLDEN SIGNAL v6 - NEXOUS ELITE
+// FIXED: bgcolor scope error & optimized flow
+// ==========================================
+indicator("ULTIMATE GOLDEN SIGNAL v6", shorttitle="UGS_v6", overlay=true, max_bars_back=2000, max_lines_count=500, max_boxes_count=500, max_labels_count=500)
+
+// ===================== 🎨 NEXOUS OFFICIAL PALETTE ==================== //
+color NEX_CYAN   = #1de9b6
+color NEX_BLUE   = #00b0ff
+color NEX_RED    = #ff1744
+color NEX_ORANGE = #ff9100
+color NEX_GREEN  = #00c853
+color NEX_GOLD   = #FFD700
+color NEX_BG     = color.new(color.black, 15)
+
+// ===================== 🛠️ INPUTS ==================== //
+string grpDisp = "Display Settings"
+bool showDashboard = input.bool(true, "Show Dashboard", group=grpDisp)
+string panelSizeInput = input.string("Medium", "Dashboard Size", options=["Small","Medium","Large","Extra Large"], group=grpDisp)
+bool showBg = input.bool(true, "CVD Bias Background", group=grpDisp)
+
+string panelTextSize = panelSizeInput == "Small" ? size.small : panelSizeInput == "Medium" ? size.normal : panelSizeInput == "Large" ? size.large : size.huge
+
+string grpFoot = "1) Footprint (LTF)"
+int fpBins = input.int(10, "Bins per candle", minval=5, maxval=30, group=grpFoot)
+string ltfTf = input.timeframe("1", "Lower TF source", group=grpFoot)
+
+string grpImb = "2) Imbalance"
+float imbRatio = input.float(3.0, "Buy/Sell ratio", minval=1.5, step=0.1, group=grpImb)
+int stackedNeed = input.int(3, "Stacked imbalance count", minval=2, maxval=10, group=grpImb)
+
+string grpVp = "3) Volume Profile"
+int vpLen = input.int(24, "Profile lookback", minval=10, maxval=200, group=grpVp)
+float vaPct = input.float(0.70, "Value Area %", minval=0.5, maxval=0.95, group=grpVp)
+
+string grpGolden = "Golden Signal"
+int goldenNeed = input.int(7, "Needed confluence (1-9)", minval=1, maxval=9, group=grpGolden)
+
+// ===================== 🧠 CORE CALCS ==================== //
+float buyVol = close >= open ? volume : volume * 0.35
+float sellVol = volume - buyVol
+float delta = buyVol - sellVol
+
+// Primitive loop for Flow (Optimized for v6 security calls)
+f_flow_logic(int len) =>
+    float b = 0.0
+    float s = 0.0
+    for i = 0 to len - 1
+        if close[i] > open[i]
+            b += volume[i]
+        else
+            s += volume[i]
+    [b, s]
+
+[flowBuy, flowSell] = request.security(syminfo.tickerid, ltfTf, f_flow_logic(fpBins))
+
+// Imbalance Engine
+var int bullStack = 0
+var int bearStack = 0
+bullStack := (buyVol / math.max(sellVol, 1) >= imbRatio) ? nz(bullStack[1]) + 1 : 0
+bearStack := (sellVol / math.max(buyVol, 1) >= imbRatio) ? nz(bearStack[1]) + 1 : 0
+bool bullStacked = bullStack >= stackedNeed
+bool bearStacked = bearStack >= stackedNeed
+
+// Volume Profile & CVD
+float poc = ta.vwma(hlc3, vpLen)
+float dev = ta.stdev(close, vpLen)
+float vah = poc + dev * vaPct
+float val = poc - dev * vaPct
+
+var float cvd = 0.0
+cvd := timeframe.change("D") ? delta : nz(cvd[1]) + delta
+float cvdEma = ta.ema(cvd, 21)
+float cvdZ = (cvd - ta.sma(cvd, 100)) / math.max(ta.stdev(cvd, 100), 0.001)
+
+// FIXED: bgcolor moved to global scope
+color bg_col = showBg ? (cvd > cvdEma ? color.new(NEX_GREEN, 92) : color.new(NEX_RED, 92)) : na
+bgcolor(bg_col)
+
+// ===================== 🏆 GOLDEN SIGNAL (9 SYSTEMS) ==================== //
+float dailyPivot = request.security(syminfo.tickerid, "D", hlc3[1])
+float vwap = ta.vwap(hlc3)
+[macdLine, macdSignal, _] = ta.macd(close - vwap, 12, 26, 9)
+
+bool s1 = close > poc
+bool s2 = flowBuy > flowSell
+bool s3 = close > dailyPivot
+bool s4 = macdLine > macdSignal
+bool s5 = ta.ema(volume, 8) > ta.ema(volume, 21)
+bool s6 = close > request.security(syminfo.tickerid, "60", ta.ema(close, 50))
+bool s7 = close > request.security(syminfo.tickerid, "W", ta.ema(close, 20))
+bool s8 = close > ta.lowest(low, 20) + (ta.highest(high, 20) - ta.lowest(low, 20)) * 0.35
+bool s9 = ta.rsi(close, 14) > 55
+
+int scoreBull = (s1?1:0)+(s2?1:0)+(s3?1:0)+(s4?1:0)+(s5?1:0)+(s6?1:0)+(s7?1:0)+(s8?1:0)+(s9?1:0)
+int scoreBear = 9 - scoreBull
+
+bool goldenBull = barstate.isconfirmed and scoreBull >= goldenNeed
+bool goldenBear = barstate.isconfirmed and scoreBear >= goldenNeed
+
+// ===================== 📊 DASHBOARD & VISUALS ==================== //
+plotshape(goldenBull, "Golden Bull", shape.arrowup, location.belowbar, NEX_GOLD, size=size.small, text="GOLD")
+plotshape(goldenBear, "Golden Bear", shape.arrowdown, location.abovebar, NEX_GOLD, size=size.small, text="GOLD")
+
+plot(poc, "POC", color=color.new(color.yellow, 20), linewidth=2)
+plot(vah, "VAH", color=color.new(NEX_GREEN, 50))
+plot(val, "VAL", color=color.new(NEX_RED, 50))
+
+if showDashboard and barstate.islast
+    var table t = table.new(position.top_right, 5, 8, bgcolor=NEX_BG, border_width=1, border_color=color.gray)
+    table.cell(t, 0, 0, "UGS v6 NEXOUS", text_color=NEX_GOLD, text_size=panelTextSize)
+    table.cell(t, 1, 0, "SCORE", text_color=color.white, text_size=panelTextSize)
+    table.cell(t, 2, 0, str.tostring(scoreBull) + "/9", text_color=NEX_CYAN, text_size=panelTextSize)
+    table.cell(t, 0, 1, "CVD Z", text_color=NEX_BLUE, text_size=panelTextSize)
+    table.cell(t, 1, 1, str.tostring(cvdZ, "#.##"), text_color=cvdZ > 0 ? NEX_GREEN : NEX_RED, text_size=panelTextSize)
+    table.cell(t, 0, 2, "IMBALANCE", text_color=NEX_ORANGE, text_size=panelTextSize)
+    table.cell(t, 1, 2, bullStacked ? "BULL STACK" : bearStacked ? "BEAR STACK" : "NONE", text_size=panelTextSize)
+
+// ===================== 🔔 ALERTS ==================== //
+alertcondition(goldenBull, "Golden Bull Signal", "Nexous Golden Bull Detected")
+alertcondition(goldenBear, "Golden Bear Signal", "Nexous Golden Bear Detected")
