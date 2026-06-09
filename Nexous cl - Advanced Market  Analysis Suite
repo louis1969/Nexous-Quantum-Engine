@@ -1,0 +1,374 @@
+//@version=6
+// =====================================================================================
+//  Nexous cl - Advanced Market Analysis Suite
+//  An all-in-one analysis ecosystem combining:
+//   1) kNN Market Architecture (Machine Learning)
+//   2) SuperTrend + Dynamic Fibonacci
+//   3) Strong Liquidity Zones (SLZ)
+//   4) FVG Profile & Rolling POC
+//   5) Trading Sessions (Asia / London / New York)
+//   6) Dashboard
+//  Zero Repaint: all calculations on confirmed bars.
+// =====================================================================================
+indicator(title = "Nexous cl", shorttitle = "Nexous_cl", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+
+// =====================================================================================
+//  COLORS / PALETTE
+// =====================================================================================
+color C_BULL     = color.new(#26a69a, 0)
+color C_BEAR     = color.new(#9c27b0, 0)
+color C_NEUTRAL  = color.new(#787b86, 0)
+color C_DEMAND   = color.new(#26a69a, 75)
+color C_SUPPLY   = color.new(#ef5350, 75)
+color C_FVG_UP   = color.new(#2962ff, 80)
+color C_FVG_DN   = color.new(#ff6d00, 80)
+color C_POC      = color.new(#ffeb3b, 0)
+color C_FIB      = color.new(#f0b90b, 0)
+color C_PANEL_BG = color.new(#101317, 5)
+color C_PANEL_HD = color.new(#1c2230, 0)
+color C_TXT      = color.new(#d1d4dc, 0)
+
+// =====================================================================================
+//  INPUT GROUPS
+// =====================================================================================
+string G_DASH = "Dashboard"
+string G_KNN  = "kNN Market Architecture"
+string G_ST   = "SuperTrend + Fibonacci"
+string G_SLZ  = "Strong Liquidity Zones"
+string G_FVG  = "FVG & Rolling POC"
+string G_SESS = "Trading Sessions"
+
+// =====================================================================================
+//  DASHBOARD SETTINGS
+// =====================================================================================
+bool   showDash  = input.bool(true, "Show Dashboard", group = G_DASH)
+
+string dashSize  = input.string("Medium", "Dashboard Size", options = ["Very Small", "Small", "Medium", "Large", "Very Large"], group = G_DASH)
+
+string dashPos   = input.string("Top Right", "Dashboard Position", options = ["Top Right", "Bottom Right", "Bottom Left", "Middle Right", "Bottom Center"], group = G_DASH)
+
+// Map size string -> Pine size constant
+size_const() =>
+    switch dashSize
+        "Very Small" => size.tiny
+        "Small"      => size.small
+        "Medium"     => size.normal
+        "Large"      => size.large
+        "Very Large" => size.huge
+        => size.normal
+
+// Map position string -> Pine position constant
+pos_const() =>
+    switch dashPos
+        "Top Right"     => position.top_right
+        "Bottom Right"  => position.bottom_right
+        "Bottom Left"   => position.bottom_left
+        "Middle Right"  => position.middle_right
+        "Bottom Center" => position.bottom_center
+        => position.top_right
+
+// =====================================================================================
+//  1) kNN MARKET ARCHITECTURE (Machine Learning)
+// =====================================================================================
+bool   knnOn      = input.bool(true,  "Enable kNN", group = G_KNN)
+bool   knnColor   = input.bool(true,  "Color Candles (Bias)", group = G_KNN)
+int    knnK       = input.int(5,      "k (Neighbors)", minval = 1, maxval = 25, group = G_KNN)
+int    knnWindow  = input.int(120,    "History Window", minval = 30, maxval = 480, group = G_KNN)
+float  knnSens    = input.float(1.0,  "Dynamic Sensitivity (ATR)", minval = 0.1, maxval = 5.0, step = 0.1, group = G_KNN)
+int    lenST      = input.int(10,     "Short-Term Length", minval = 2, group = G_KNN)
+int    lenMT      = input.int(30,     "Medium-Term Length", minval = 5, group = G_KNN)
+int    lenLT      = input.int(90,     "Long-Term Length", minval = 10, group = G_KNN)
+
+// Common ATR (computed every bar for consistency)
+float atr14   = ta.atr(14)
+
+// Feature: normalized momentum (zero-repaint, on confirmed values)
+float atrKnn  = atr14
+float feature = atrKnn == 0 ? 0.0 : (close - close[3]) / (atrKnn * knnSens)
+
+// History buffers for feature & outcome
+var array<float> featBuf = array.new_float()
+var array<float> outBuf  = array.new_float()
+
+// Outcome = sign of move 3 bars later (available only on confirmed bar)
+float outcome = math.sign(close - close[3])
+
+if barstate.isconfirmed and not na(feature) and not na(feature[3])
+    array.push(featBuf, feature[3])
+    array.push(outBuf, outcome)
+    if array.size(featBuf) > knnWindow
+        array.shift(featBuf)
+        array.shift(outBuf)
+
+// kNN vote: find k nearest neighbors and sum their outcomes
+knn_predict(float f) =>
+    int n = array.size(featBuf)
+    float vote = 0.0
+    if n >= knnK and not na(f)
+        array<float> dist = array.new_float()
+        for i = 0 to n - 1
+            array.push(dist, math.abs(f - array.get(featBuf, i)))
+        array<int> used = array.new_int()
+        for _k = 0 to knnK - 1
+            int   bestIdx = -1
+            float bestVal = 1.0e20
+            for i = 0 to n - 1
+                if not array.includes(used, i)
+                    float d = array.get(dist, i)
+                    if d < bestVal
+                        bestVal := d
+                        bestIdx := i
+            if bestIdx >= 0
+                array.push(used, bestIdx)
+                vote += array.get(outBuf, bestIdx)
+    vote
+
+float knnVote = knnOn ? knn_predict(feature) : 0.0
+int   knnBias = knnVote > 0 ? 1 : knnVote < 0 ? -1 : 0
+
+// Multi-Term Hierarchy (ST / MT / LT trend via EMA slope)
+trend_dir(int len) =>
+    float e = ta.ema(close, len)
+    e > e[1] ? 1 : e < e[1] ? -1 : 0
+int stDir = trend_dir(lenST)
+int mtDir = trend_dir(lenMT)
+int ltDir = trend_dir(lenLT)
+
+// Delta Tank: accumulated volume delta per bias
+float volDelta = (close >= open ? volume : -volume)
+var float deltaTank = 0.0
+if barstate.isconfirmed
+    deltaTank := knnBias >= 0 ? math.max(0.0, deltaTank + volDelta) : math.min(0.0, deltaTank + volDelta)
+
+barcolor(knnOn and knnColor ? (knnBias > 0 ? C_BULL : knnBias < 0 ? C_BEAR : na) : na)
+
+// =====================================================================================
+//  2) SUPERTREND + DYNAMIC FIBONACCI
+// =====================================================================================
+bool  stOn       = input.bool(true,  "Enable SuperTrend", group = G_ST)
+int   stPeriod   = input.int(25,     "ATR Period", minval = 1, group = G_ST)
+float stMult     = input.float(4.0,  "ATR Multiplier", minval = 0.5, step = 0.1, group = G_ST)
+bool  fibOn      = input.bool(true,  "Dynamic Fibonacci Levels", group = G_ST)
+int   fibExtend  = input.int(15,     "Extend Lines (bars)", minval = 0, maxval = 100, group = G_ST)
+bool  fibFill    = input.bool(true,  "Fill Between Levels", group = G_ST)
+
+[stLine, stDirRaw] = ta.supertrend(stMult, stPeriod)
+int stTrend = stDirRaw < 0 ? 1 : -1
+
+float swingHi = ta.highest(high, stPeriod)
+float swingLo = ta.lowest(low, stPeriod)
+
+plot(stOn ? stLine : na, "SuperTrend", color = stTrend > 0 ? C_BULL : C_BEAR, linewidth = 2, style = plot.style_linebr)
+
+var float fibHi = na
+var float fibLo = na
+var array<line>  fibLines  = array.new_line()
+var array<label> fibLabels = array.new_label()
+var linefill     fibLF1    = na
+
+var float[] fibRatios = array.from(0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0)
+
+clear_fib() =>
+    if array.size(fibLines) > 0
+        for i = 0 to array.size(fibLines) - 1
+            line.delete(array.get(fibLines, i))
+        array.clear(fibLines)
+    if array.size(fibLabels) > 0
+        for i = 0 to array.size(fibLabels) - 1
+            label.delete(array.get(fibLabels, i))
+        array.clear(fibLabels)
+
+bool stFlip = stOn and barstate.isconfirmed and stTrend != stTrend[1]
+if stFlip and fibOn
+    clear_fib()
+    fibHi := swingHi
+    fibLo := swingLo
+    for i = 0 to array.size(fibRatios) - 1
+        float r = array.get(fibRatios, i)
+        float lvl = stTrend > 0 ? fibLo + (fibHi - fibLo) * r : fibHi - (fibHi - fibLo) * r
+        line ln = line.new(bar_index, lvl, bar_index + fibExtend, lvl, color = C_FIB, width = 1, style = line.style_dashed)
+        array.push(fibLines, ln)
+        label lb = label.new(bar_index + fibExtend, lvl, str.tostring(r * 100, "#.#") + "%  " + str.tostring(lvl, format.mintick), style = label.style_label_left, color = color.new(C_FIB, 85), textcolor = C_TXT, size = size.small)
+        array.push(fibLabels, lb)
+    if fibFill and array.size(fibLines) >= 6
+        fibLF1 := linefill.new(array.get(fibLines, 2), array.get(fibLines, 4), color.new(C_BULL, 90))
+
+if fibOn and array.size(fibLines) > 0 and barstate.islast
+    for i = 0 to array.size(fibLines) - 1
+        line.set_x2(array.get(fibLines, i), bar_index + fibExtend)
+    for i = 0 to array.size(fibLabels) - 1
+        label.set_x(array.get(fibLabels, i), bar_index + fibExtend)
+
+// =====================================================================================
+//  3) STRONG LIQUIDITY ZONES (SLZ) - Supply & Demand
+// =====================================================================================
+bool  slzOn      = input.bool(true,  "Enable SLZ", group = G_SLZ)
+int   slzPivot   = input.int(10,     "Pivot Lookback", minval = 2, group = G_SLZ)
+int   slzMax     = input.int(6,      "Max Zones (per side)", minval = 1, maxval = 20, group = G_SLZ)
+bool  slzScore   = input.bool(true,  "Show Strength Score", group = G_SLZ)
+
+float ph = ta.pivothigh(high, slzPivot, slzPivot)
+float pl = ta.pivotlow(low, slzPivot, slzPivot)
+
+type Zone
+    box   bx
+    float top
+    float bot
+    int   score
+    bool  isSupply
+
+var array<Zone> zones = array.new<Zone>()
+
+new_zone(float topv, float botv, bool supply) =>
+    box b = box.new(bar_index[slzPivot], topv, bar_index, botv, border_color = supply ? color.new(#ef5350, 40) : color.new(#26a69a, 40), bgcolor = supply ? C_SUPPLY : C_DEMAND)
+    Zone z = Zone.new(b, topv, botv, 0, supply)
+    array.unshift(zones, z)
+    if array.size(zones) > slzMax * 2
+        Zone old = array.pop(zones)
+        box.delete(old.bx)
+
+if slzOn and barstate.isconfirmed
+    if not na(ph)
+        new_zone(ph, ph - atr14, true)
+    if not na(pl)
+        new_zone(pl + atr14, pl, false)
+    if array.size(zones) > 0
+        for i = 0 to array.size(zones) - 1
+            Zone z = array.get(zones, i)
+            box.set_right(z.bx, bar_index)
+            bool retest = high >= z.bot and low <= z.top
+            if retest
+                z.score := int(math.min(10, z.score + 1))
+                box.set_text(z.bx, slzScore ? "Score " + str.tostring(z.score) + "/10" : "")
+                box.set_text_color(z.bx, C_TXT)
+                box.set_text_size(z.bx, size.small)
+
+// =====================================================================================
+//  4) FVG (Fair Value Gaps) & ROLLING POC
+// =====================================================================================
+bool  fvgOn      = input.bool(true,  "Enable FVG", group = G_FVG)
+int   fvgMax     = input.int(6,      "Max FVG", minval = 1, maxval = 20, group = G_FVG)
+bool  pocOn      = input.bool(true,  "Rolling POC", group = G_FVG)
+int   pocLen     = input.int(50,     "POC Window", minval = 10, group = G_FVG)
+
+var array<box> fvgBoxes = array.new<box>()
+
+add_fvg(float topv, float botv, bool up) =>
+    box b = box.new(bar_index[1], topv, bar_index + 5, botv, border_color = na, bgcolor = up ? C_FVG_UP : C_FVG_DN)
+    array.unshift(fvgBoxes, b)
+    if array.size(fvgBoxes) > fvgMax
+        box.delete(array.pop(fvgBoxes))
+
+if fvgOn and barstate.isconfirmed
+    if low > high[2]
+        add_fvg(low, high[2], true)
+    if high < low[2]
+        add_fvg(low[2], high, false)
+
+var float pocPrice = na
+if pocOn and barstate.isconfirmed
+    float bestVol = -1.0
+    float bestPx  = na
+    for i = 0 to pocLen - 1
+        if volume[i] > bestVol
+            bestVol := volume[i]
+            bestPx  := (high[i] + low[i] + close[i]) / 3.0
+    pocPrice := bestPx
+
+plot(pocOn ? pocPrice : na, "Rolling POC", color = C_POC, linewidth = 2, style = plot.style_circles)
+
+// =====================================================================================
+//  5) TRADING SESSIONS
+// =====================================================================================
+bool   sessOn   = input.bool(true,  "Show Sessions", group = G_SESS)
+string sessTz   = input.string("GMT+2", "Timezone", group = G_SESS)
+bool   sAsiaOn  = input.bool(true,  "Asia  03:00 - 11:00", group = G_SESS)
+bool   sLonOn   = input.bool(true,  "London  10:00 - 18:30", group = G_SESS)
+bool   sNyOn    = input.bool(true,  "New York  16:30 - 23:00", group = G_SESS)
+color  cAsia    = input.color(color.new(#2962ff, 88), "Asia Color", group = G_SESS)
+color  cLon     = input.color(color.new(#f0b90b, 88), "London Color", group = G_SESS)
+color  cNy      = input.color(color.new(#26a69a, 88), "New York Color", group = G_SESS)
+
+bool inAsia   = not na(time(timeframe.period, "0300-1100", sessTz))
+bool inLondon = not na(time(timeframe.period, "1000-1830", sessTz))
+bool inNy     = not na(time(timeframe.period, "1630-2300", sessTz))
+
+bgcolor(sessOn and sAsiaOn and inAsia   ? cAsia : na, title = "Asia")
+bgcolor(sessOn and sLonOn  and inLondon ? cLon  : na, title = "London")
+bgcolor(sessOn and sNyOn   and inNy     ? cNy   : na, title = "New York")
+
+// =====================================================================================
+//  6) DASHBOARD - all tools displayed on the chart
+// =====================================================================================
+arrow(int d) => d > 0 ? "Up" : d < 0 ? "Down" : "Flat"
+dirCol(int d) => d > 0 ? C_BULL : d < 0 ? C_BEAR : C_NEUTRAL
+onTxt(bool b) => b ? "ON" : "OFF"
+onCol(bool b) => b ? C_BULL : C_NEUTRAL
+
+var table dash = na
+
+if showDash and barstate.islast
+    if na(dash)
+        dash := table.new(pos_const(), 3, 13, bgcolor = C_PANEL_BG, border_color = color.new(#000000, 60), border_width = 1, frame_color = color.new(#000000, 40), frame_width = 1)
+    size_t = size_const()
+    table.cell(dash, 0, 0, "Nexous cl", text_color = color.new(#f0b90b, 0), text_size = size_t, bgcolor = C_PANEL_HD)
+    table.cell(dash, 1, 0, "Tool",   text_color = C_TXT, text_size = size_t, bgcolor = C_PANEL_HD)
+    table.cell(dash, 2, 0, "Status", text_color = C_TXT, text_size = size_t, bgcolor = C_PANEL_HD)
+
+    table.cell(dash, 0, 1, "1", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 1, "kNN Bias", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 1, arrow(knnBias) + " (" + str.tostring(knnVote, "#.#") + ")", text_color = dirCol(knnBias), text_size = size_t)
+
+    table.cell(dash, 0, 2, "2", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 2, "ST / MT / LT", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 2, arrow(stDir) + " / " + arrow(mtDir) + " / " + arrow(ltDir), text_color = dirCol(stDir + mtDir + ltDir), text_size = size_t)
+
+    table.cell(dash, 0, 3, "3", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 3, "Delta Tank", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 3, str.tostring(deltaTank, format.volume), text_color = deltaTank >= 0 ? C_BULL : C_BEAR, text_size = size_t)
+
+    table.cell(dash, 0, 4, "4", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 4, "SuperTrend", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 4, stOn ? (stTrend > 0 ? "Bullish" : "Bearish") : "OFF", text_color = stOn ? dirCol(stTrend) : C_NEUTRAL, text_size = size_t)
+
+    table.cell(dash, 0, 5, "5", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 5, "Fibonacci", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 5, onTxt(fibOn and stOn), text_color = onCol(fibOn and stOn), text_size = size_t)
+
+    table.cell(dash, 0, 6, "6", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 6, "Liquidity Zones", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 6, slzOn ? str.tostring(array.size(zones)) + " zones" : "OFF", text_color = onCol(slzOn), text_size = size_t)
+
+    table.cell(dash, 0, 7, "7", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 7, "FVG", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 7, fvgOn ? str.tostring(array.size(fvgBoxes)) + " gaps" : "OFF", text_color = onCol(fvgOn), text_size = size_t)
+
+    table.cell(dash, 0, 8, "8", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 8, "Rolling POC", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 8, pocOn and not na(pocPrice) ? str.tostring(pocPrice, format.mintick) : "OFF", text_color = pocOn ? C_POC : C_NEUTRAL, text_size = size_t)
+
+    string activeSess = inAsia ? "Asia" : inLondon ? "London" : inNy ? "New York" : "-"
+    table.cell(dash, 0, 9, "9", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 9, "Session", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 9, sessOn ? activeSess : "OFF", text_color = sessOn ? C_TXT : C_NEUTRAL, text_size = size_t)
+
+    int totalBias = knnBias + stTrend + stDir + mtDir + ltDir
+    string biasTxt = totalBias > 1 ? "BULLISH" : totalBias < -1 ? "BEARISH" : "NEUTRAL"
+    table.cell(dash, 0, 10, "10", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 10, "MTF Alignment", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 10, biasTxt, text_color = dirCol(totalBias), text_size = size_t)
+
+    table.cell(dash, 0, 11, "11", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 11, "Volume Delta", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 11, str.tostring(volDelta, format.volume), text_color = volDelta >= 0 ? C_BULL : C_BEAR, text_size = size_t)
+
+    table.cell(dash, 0, 12, "12", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 1, 12, "Repaint", text_color = C_TXT, text_size = size_t)
+    table.cell(dash, 2, 12, "Zero", text_color = C_BULL, text_size = size_t)
+
+// =====================================================================================
+//  ALERTS
+// =====================================================================================
+alertcondition(stOn and ta.cross(close, stLine), "SuperTrend Flip", "Nexous cl: SuperTrend trend change")
+alertcondition(knnOn and knnBias > 0 and knnBias[1] <= 0, "kNN Bullish", "Nexous cl: kNN bias turned bullish")
+alertcondition(knnOn and knnBias < 0 and knnBias[1] >= 0, "kNN Bearish", "Nexous cl: kNN bias turned bearish")
