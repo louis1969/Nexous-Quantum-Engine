@@ -1,0 +1,502 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © NEXOUS
+
+//@version=6
+indicator(
+ title            = "NEXOUS VIPv7.0.1",
+ shorttitle       = "NEXOUS VIP v7.0.1",
+ overlay          = true,
+ max_boxes_count  = 500,
+ max_labels_count = 500,
+ max_lines_count  = 500
+)
+
+const string GRP_LON  = "🏙  London Session"
+const string GRP_FVG  = "⚡  Fair Value Gaps"
+const string GRP_MOM  = "📊  Momentum / RSI"
+const string GRP_SMC  = "🧱  SMC — BOS / CHoCH / Order Blocks"
+const string GRP_FIB  = "📐  Fibonacci Extensions"
+const string GRP_DASH = "🖥  Mega Neural Dashboard"
+const string GRP_VIS  = "🎨  Visuals"
+const string GRP_FLT  = "🔍  Filters"
+
+int   londonOpenHour  = input.int  (7,    "London Open Hour (UTC)",  minval=0, maxval=23, group=GRP_LON)
+int   londonCloseHour = input.int  (8,    "London Close Hour (UTC)", minval=0, maxval=23, group=GRP_LON)
+bool  showLondonRange = input.bool (true, "Show London Range Box",   group=GRP_LON)
+bool  showSweepSignal = input.bool (true, "Show Sweep Labels",       group=GRP_LON)
+color londonBoxColor  = input.color(color.new(#00BFFF, 85), "London Range Color",  group=GRP_LON)
+color sweepBullColor  = input.color(color.new(#00FF88,  0), "Bullish Sweep Color", group=GRP_LON)
+color sweepBearColor  = input.color(color.new(#FF3366,  0), "Bearish Sweep Color", group=GRP_LON)
+
+int  fvgLookback      = input.int  (15,   "Max FVG Display",         minval=5,  maxval=200, group=GRP_FVG)
+bool showBullFVG      = input.bool (true, "Show Bullish FVGs",       group=GRP_FVG)
+bool showBearFVG      = input.bool (true, "Show Bearish FVGs",       group=GRP_FVG)
+bool extendFVG        = input.bool (true, "Extend Unfilled FVGs",    group=GRP_FVG)
+bool autoRemoveFilled = input.bool (true, "Auto-Remove Filled FVGs", group=GRP_FVG)
+
+int    rsiLength    = input.int   (14,        "RSI Length",        minval=2, maxval=100, group=GRP_MOM)
+int    rsiSmooth    = input.int   (3,         "RSI Smoothing",     minval=1, maxval=20,  group=GRP_MOM)
+string rsiSource    = input.string("Returns", "RSI Source",        ["Returns","Close","Volume"], group=GRP_MOM)
+int    momLookback  = input.int   (5,         "Momentum Lookback", minval=1, maxval=50,  group=GRP_MOM)
+
+bool showBOS    = input.bool(true, "Show BOS / CHoCH Labels", group=GRP_SMC)
+bool showOB     = input.bool(true, "Show Order Blocks",       group=GRP_SMC)
+int  obLookback = input.int (10,   "OB Search Lookback",      minval=3, maxval=50, group=GRP_SMC)
+int  swingLen   = input.int (5,    "Swing Pivot Length",      minval=2, maxval=20, group=GRP_SMC)
+
+bool showFib        = input.bool(true, "Show Fib Extension Lines",        group=GRP_FIB)
+bool showGoldenZone = input.bool(true, "Highlight Golden Zone 1.5-1.618", group=GRP_FIB)
+
+bool   showDashboard = input.bool  (true,       "Show Dashboard", group=GRP_DASH)
+string dashPos       = input.string("Top Right", "Position",      ["Top Right","Bottom Right","Top Left","Bottom Left"], group=GRP_DASH)
+
+string heatmapStyle = input.string("Palette", "Heatmap Style", ["Gradient","Discrete","Simple","Palette"], group=GRP_VIS)
+string paletteName  = input.string("Jet",     "Palette Name",  ["Viridis","Plasma","Inferno","Magma","Cividis","Turbo","Jet","Red-Green","Blue-White-Red"], group=GRP_VIS)
+int    colorIntens  = input.int  (30,         "Fill Transparency %", minval=0, maxval=100, step=5, group=GRP_VIS)
+bool   showLabels   = input.bool (false,       "Show RSI Labels",    group=GRP_VIS)
+
+float minFvgSize    = input.float(0.1,  "Min FVG Size %",        minval=0.01, maxval=10.0, step=0.01, group=GRP_FLT)
+bool  filterByRSI   = input.bool (false,"Filter by RSI Extremes", group=GRP_FLT)
+float rsiOverbought = input.float(70,   "RSI Overbought",         minval=50, maxval=100, group=GRP_FLT)
+float rsiOversold   = input.float(30,   "RSI Oversold",           minval=0,  maxval=50,  group=GRP_FLT)
+
+getHeatmapColor(float rv, bool isBull) =>
+    color c = na
+    if heatmapStyle == "Gradient"
+        c := isBull ? color.from_gradient(rv, 0, 100, color.new(color.blue, colorIntens+20), color.new(color.lime, colorIntens)) : color.from_gradient(rv, 0, 100, color.new(color.purple, colorIntens+20), color.new(color.red, colorIntens))
+    else if heatmapStyle == "Discrete"
+        c := rv>=70 ? color.new(#FF0000,colorIntens) : rv>=60 ? color.new(#FF9900,colorIntens) : rv>=50 ? color.new(#FFE600,colorIntens+10) : rv>=40 ? color.new(#008CFF,colorIntens+10) : rv>=30 ? color.new(#00FFE5,colorIntens) : color.new(#00FF00,colorIntens)
+    else if heatmapStyle == "Simple"
+        c := isBull ? (rv>50 ? color.new(#00FF00,colorIntens) : color.new(#00FF00,colorIntens+30)) : (rv>50 ? color.new(#FF0000,colorIntens) : color.new(#FF0000,colorIntens+30))
+    else
+        if paletteName == "Viridis"
+            c := rv>=86?color.new(#FDE725,colorIntens):rv>=72?color.new(#A0DA39,colorIntens):rv>=58?color.new(#4AC16D,colorIntens):rv>=44?color.new(#1F9E89,colorIntens):rv>=30?color.new(#2D708E,colorIntens):rv>=16?color.new(#453781,colorIntens):color.new(#440154,colorIntens)
+        else if paletteName == "Plasma"
+            c := rv>=86?color.new(#F0F921,colorIntens):rv>=72?color.new(#FCA636,colorIntens):rv>=58?color.new(#E16462,colorIntens):rv>=44?color.new(#B12A90,colorIntens):rv>=30?color.new(#6A00A8,colorIntens):rv>=16?color.new(#4C0073,colorIntens):color.new(#0D0887,colorIntens)
+        else if paletteName == "Inferno"
+            c := rv>=86?color.new(#FCFFA4,colorIntens):rv>=72?color.new(#FCA50A,colorIntens):rv>=58?color.new(#DD513A,colorIntens):rv>=44?color.new(#932667,colorIntens):rv>=30?color.new(#420A68,colorIntens):rv>=16?color.new(#1F0C48,colorIntens):color.new(#000004,colorIntens)
+        else if paletteName == "Magma"
+            c := rv>=86?color.new(#FCFDBF,colorIntens):rv>=72?color.new(#F29E2E,colorIntens):rv>=58?color.new(#E35933,colorIntens):rv>=44?color.new(#B63679,colorIntens):rv>=30?color.new(#721F81,colorIntens):rv>=16?color.new(#2C115F,colorIntens):color.new(#000004,colorIntens)
+        else if paletteName == "Cividis"
+            c := rv>=86?color.new(#FDEA45,colorIntens):rv>=72?color.new(#B7C67E,colorIntens):rv>=58?color.new(#86A37F,colorIntens):rv>=44?color.new(#5C7F7E,colorIntens):rv>=30?color.new(#3B5B75,colorIntens):rv>=16?color.new(#1E3A66,colorIntens):color.new(#00204C,colorIntens)
+        else if paletteName == "Turbo"
+            c := rv>=86?color.new(#E35B2A,colorIntens):rv>=72?color.new(#FEE74D,colorIntens):rv>=58?color.new(#B5E44A,colorIntens):rv>=44?color.new(#58E06E,colorIntens):rv>=30?color.new(#3BB3EB,colorIntens):rv>=16?color.new(#3B5BAA,colorIntens):color.new(#23171B,colorIntens)
+        else if paletteName == "Jet"
+            c := rv>=86?color.new(#7F0000,colorIntens):rv>=72?color.new(#FF0000,colorIntens):rv>=58?color.new(#FF7F00,colorIntens):rv>=44?color.new(#FFFF00,colorIntens):rv>=30?color.new(#00FFFF,colorIntens):rv>=16?color.new(#0000FF,colorIntens):color.new(#00007F,colorIntens)
+        else if paletteName == "Red-Green"
+            c := rv>=86?color.new(#F44336,colorIntens):rv>=72?color.new(#FF5722,colorIntens):rv>=58?color.new(#FFA726,colorIntens):rv>=44?color.new(#808080,colorIntens):rv>=30?color.new(#8BC34A,colorIntens):rv>=16?color.new(#4CAF50,colorIntens):color.new(#00FF00,colorIntens)
+        else if paletteName == "Blue-White-Red"
+            c := rv>=86?color.new(#0000FF,colorIntens):rv>=72?color.new(#6666FF,colorIntens):rv>=58?color.new(#AAAAFF,colorIntens):rv>=44?color.new(#F0F0F0,colorIntens):rv>=30?color.new(#FFAAAA,colorIntens):rv>=16?color.new(#FF6666,colorIntens):color.new(#FF0000,colorIntens)
+    c
+
+fvgLogitProb(float rsiVal, float sizePct, bool isBull) =>
+    float z = isBull ? (50.0 - rsiVal) * 0.08 + sizePct * 2.0 : (rsiVal - 50.0) * 0.08 + sizePct * 2.0
+    math.round(1.0 / (1.0 + math.exp(-z)) * 100)
+
+float srcData = 0.0
+if rsiSource == "Returns"
+    srcData := (close - close[momLookback]) / close[momLookback] * 100
+else if rsiSource == "Volume"
+    srcData := volume
+else
+    srcData := close
+
+float rsiRaw      = ta.rsi(srcData, rsiLength)
+float rsiSmoothed = ta.sma(rsiRaw, rsiSmooth)
+
+var float londonHigh    = na
+var float londonLow     = na
+var bool  londonLocked  = false
+var int   londonBarOpen = na
+var box   londonBox     = na
+
+bool isLondonHour = hour(time, "UTC") == londonOpenHour
+bool isNewDay     = ta.change(dayofmonth) != 0
+
+if isNewDay
+    londonHigh   := na
+    londonLow    := na
+    londonLocked := false
+
+if isLondonHour and not londonLocked
+    if na(londonHigh)
+        londonHigh    := high
+        londonLow     := low
+        londonBarOpen := bar_index
+    else
+        londonHigh := math.max(londonHigh, high)
+        londonLow  := math.min(londonLow,  low)
+
+bool lockNow = not isLondonHour and isLondonHour[1] and not na(londonHigh) and not londonLocked
+
+if lockNow
+    londonLocked := true
+    if showLondonRange
+        if not na(londonBox)
+            box.delete(londonBox)
+        londonBox := box.new(londonBarOpen, londonHigh, bar_index, londonLow, bgcolor=londonBoxColor, border_color=color.new(#00BFFF, 40), border_width=2, text="NEXOUS London Range", text_color=color.new(#00BFFF, 0), text_size=size.small, text_halign=text.align_left, text_valign=text.align_top)
+
+if londonLocked and showLondonRange and not na(londonBox)
+    box.set_right(londonBox, bar_index)
+
+bool bullSweep = londonLocked and not na(londonLow)  and low[1]  < londonLow  and close > londonLow
+bool bearSweep = londonLocked and not na(londonHigh) and high[1] > londonHigh and close < londonHigh
+
+if bullSweep and showSweepSignal
+    label.new(bar_index, low, "NEXOUS\nBULL SWEEP", style=label.style_label_up, color=color.new(sweepBullColor, 5), textcolor=color.white, size=size.normal)
+
+if bearSweep and showSweepSignal
+    label.new(bar_index, high, "NEXOUS\nBEAR SWEEP", style=label.style_label_down, color=color.new(sweepBearColor, 5), textcolor=color.white, size=size.normal)
+
+bool  bullFVG  = low  > high[2] and close > open
+float bullFVGT = low
+float bullFVGB = high[2]
+float bullFVGP = (bullFVGT - bullFVGB) / close * 100
+
+bool  bearFVG  = high < low[2] and close < open
+float bearFVGT = low[2]
+float bearFVGB = high
+float bearFVGP = (bearFVGT - bearFVGB) / close * 100
+
+bullFVG := bullFVG and bullFVGP >= minFvgSize
+bearFVG := bearFVG and bearFVGP >= minFvgSize
+
+if filterByRSI
+    bullFVG := bullFVG and rsiSmoothed < rsiOversold
+    bearFVG := bearFVG and rsiSmoothed > rsiOverbought
+
+int bullProb = bullFVG ? fvgLogitProb(rsiSmoothed, bullFVGP, true)  : 0
+int bearProb = bearFVG ? fvgLogitProb(rsiSmoothed, bearFVGP, false) : 0
+
+var array<box>   bullBoxes = array.new<box>()
+var array<label> bullLbls  = array.new<label>()
+var array<float> bullTops  = array.new_float()
+var array<float> bullBots  = array.new_float()
+var array<float> bullRSIs  = array.new_float()
+
+var array<box>   bearBoxes = array.new<box>()
+var array<label> bearLbls  = array.new<label>()
+var array<float> bearTops  = array.new_float()
+var array<float> bearBots  = array.new_float()
+var array<float> bearRSIs  = array.new_float()
+
+if bullFVG and showBullFVG
+    array.push(bullTops, bullFVGT)
+    array.push(bullBots, bullFVGB)
+    array.push(bullRSIs, rsiSmoothed)
+    color bc = getHeatmapColor(rsiSmoothed, true)
+    box bx = box.new(bar_index-2, bullFVGT, bar_index, bullFVGB, bgcolor=bc, border_color=color.new(#00FF88, 50), border_width=1, text="FVG "+str.tostring(bullProb)+"%", text_color=color.white, text_size=size.tiny)
+    array.push(bullBoxes, bx)
+    if showLabels
+        label lb = label.new(bar_index-1, bullFVGT, str.tostring(rsiSmoothed, "#.#"), style=label.style_label_down, color=color.new(color.green, 70), textcolor=color.green, size=size.small)
+        array.push(bullLbls, lb)
+
+if bearFVG and showBearFVG
+    array.push(bearTops, bearFVGT)
+    array.push(bearBots, bearFVGB)
+    array.push(bearRSIs, rsiSmoothed)
+    color bc = getHeatmapColor(rsiSmoothed, false)
+    box bx = box.new(bar_index-2, bearFVGT, bar_index, bearFVGB, bgcolor=bc, border_color=color.new(#FF3366, 50), border_width=1, text="FVG "+str.tostring(bearProb)+"%", text_color=color.white, text_size=size.tiny)
+    array.push(bearBoxes, bx)
+    if showLabels
+        label lb = label.new(bar_index-1, bearFVGB, str.tostring(rsiSmoothed, "#.#"), style=label.style_label_up, color=color.new(color.red, 70), textcolor=color.red, size=size.small)
+        array.push(bearLbls, lb)
+
+if array.size(bullBoxes) > 0
+    for i = array.size(bullBoxes)-1 to 0
+        if i >= 0 and i < array.size(bullBoxes)
+            box   bx  = array.get(bullBoxes, i)
+            float bot = array.get(bullBots, i)
+            if low <= bot and autoRemoveFilled
+                box.delete(bx)
+                array.remove(bullBoxes, i)
+                array.remove(bullTops, i)
+                array.remove(bullBots, i)
+                array.remove(bullRSIs, i)
+                if i < array.size(bullLbls)
+                    label.delete(array.get(bullLbls, i))
+                    array.remove(bullLbls, i)
+            else if extendFVG
+                box.set_right(bx, bar_index)
+
+if array.size(bearBoxes) > 0
+    for i = array.size(bearBoxes)-1 to 0
+        if i >= 0 and i < array.size(bearBoxes)
+            box   bx  = array.get(bearBoxes, i)
+            float top = array.get(bearTops, i)
+            if high >= top and autoRemoveFilled
+                box.delete(bx)
+                array.remove(bearBoxes, i)
+                array.remove(bearTops, i)
+                array.remove(bearBots, i)
+                array.remove(bearRSIs, i)
+                if i < array.size(bearLbls)
+                    label.delete(array.get(bearLbls, i))
+                    array.remove(bearLbls, i)
+            else if extendFVG
+                box.set_right(bx, bar_index)
+
+while array.size(bullBoxes) > fvgLookback
+    box.delete(array.shift(bullBoxes))
+    array.shift(bullTops)
+    array.shift(bullBots)
+    array.shift(bullRSIs)
+    if array.size(bullLbls) > 0
+        label.delete(array.shift(bullLbls))
+
+while array.size(bearBoxes) > fvgLookback
+    box.delete(array.shift(bearBoxes))
+    array.shift(bearTops)
+    array.shift(bearBots)
+    array.shift(bearRSIs)
+    if array.size(bearLbls) > 0
+        label.delete(array.shift(bearLbls))
+
+float swingH = ta.pivothigh(high, swingLen, swingLen)
+float swingL = ta.pivotlow (low,  swingLen, swingLen)
+
+var float lastSH = na
+var float lastSL = na
+
+if not na(swingH)
+    lastSH := swingH
+if not na(swingL)
+    lastSL := swingL
+
+bool bosBull = not na(lastSH) and ta.crossover (close, lastSH)
+bool bosBear = not na(lastSL) and ta.crossunder(close, lastSL)
+
+var int trendDir = 0
+bool chochBull   = bosBull and trendDir == -1
+bool chochBear   = bosBear and trendDir ==  1
+
+if bosBull
+    trendDir := 1
+if bosBear
+    trendDir := -1
+
+if showBOS
+    if bosBull and not chochBull
+        label.new(bar_index, low,  "BOS UP",   style=label.style_label_up,   color=color.new(#00FF88, 15), textcolor=color.white, size=size.small)
+    if bosBear and not chochBear
+        label.new(bar_index, high, "BOS DN",   style=label.style_label_down, color=color.new(#FF3366, 15), textcolor=color.white, size=size.small)
+    if chochBull
+        label.new(bar_index, low,  "CHoCH UP", style=label.style_label_up,   color=color.new(#FFD700, 15), textcolor=color.white, size=size.small)
+    if chochBear
+        label.new(bar_index, high, "CHoCH DN", style=label.style_label_down, color=color.new(#FFD700, 15), textcolor=color.white, size=size.small)
+
+var array<box> obBoxes = array.new<box>()
+
+if showOB
+    if bosBull
+        int obIdx = na
+        for j = 1 to obLookback
+            if close[j] < open[j]
+                obIdx := j
+                break
+        if not na(obIdx)
+            box ob = box.new(bar_index-obIdx, math.max(open[obIdx],close[obIdx]), bar_index, math.min(open[obIdx],close[obIdx]), bgcolor=color.new(#00FF88, 82), border_color=color.new(#00FF88, 35), border_width=1, text="Bull OB", text_color=color.new(#00FF88, 0), text_size=size.tiny)
+            array.push(obBoxes, ob)
+    if bosBear
+        int obIdx = na
+        for j = 1 to obLookback
+            if close[j] > open[j]
+                obIdx := j
+                break
+        if not na(obIdx)
+            box ob = box.new(bar_index-obIdx, math.max(open[obIdx],close[obIdx]), bar_index, math.min(open[obIdx],close[obIdx]), bgcolor=color.new(#FF3366, 82), border_color=color.new(#FF3366, 35), border_width=1, text="Bear OB", text_color=color.new(#FF3366, 0), text_size=size.tiny)
+            array.push(obBoxes, ob)
+
+if array.size(obBoxes) > 0
+    for i = 0 to array.size(obBoxes)-1
+        box.set_right(array.get(obBoxes, i), bar_index)
+
+while array.size(obBoxes) > 10
+    box.delete(array.shift(obBoxes))
+
+if showFib and londonLocked and not na(londonHigh) and not na(londonLow)
+    float rng = londonHigh - londonLow
+    if bullSweep
+        float tp150 = londonHigh + rng * 1.5
+        float tp618 = londonHigh + rng * 1.618
+        line.new(bar_index, tp150, bar_index+40, tp150, color=color.new(#FFD700, 5), style=line.style_dashed, width=2)
+        line.new(bar_index, tp618, bar_index+40, tp618, color=color.new(#FFA500, 5), style=line.style_dashed, width=2)
+        label.new(bar_index+41, tp150, "TP 1.500", style=label.style_label_left, color=color.new(#FFD700, 10), textcolor=color.white, size=size.small)
+        label.new(bar_index+41, tp618, "TP 1.618", style=label.style_label_left, color=color.new(#FFA500, 10), textcolor=color.white, size=size.small)
+        if showGoldenZone
+            box.new(bar_index, tp618, bar_index+40, tp150, bgcolor=color.new(#FFD700, 80), border_color=color.new(#FFD700, 30), border_width=1, text="Golden Zone", text_color=color.new(#FFD700, 0), text_size=size.tiny)
+    if bearSweep
+        float tp150 = londonLow - rng * 1.5
+        float tp618 = londonLow - rng * 1.618
+        line.new(bar_index, tp150, bar_index+40, tp150, color=color.new(#FFD700, 5), style=line.style_dashed, width=2)
+        line.new(bar_index, tp618, bar_index+40, tp618, color=color.new(#FFA500, 5), style=line.style_dashed, width=2)
+        label.new(bar_index+41, tp150, "TP 1.500", style=label.style_label_left, color=color.new(#FFD700, 10), textcolor=color.white, size=size.small)
+        label.new(bar_index+41, tp618, "TP 1.618", style=label.style_label_left, color=color.new(#FFA500, 10), textcolor=color.white, size=size.small)
+        if showGoldenZone
+            box.new(bar_index, tp150, bar_index+40, tp618, bgcolor=color.new(#FFD700, 80), border_color=color.new(#FFD700, 30), border_width=1, text="Golden Zone", text_color=color.new(#FFD700, 0), text_size=size.tiny)
+
+float atr14    = ta.atr(14)
+float volSMA20 = ta.sma(volume, 20)
+float ema20    = ta.ema(close, 20)
+float ema50    = ta.ema(close, 50)
+float ema200   = ta.ema(close, 200)
+
+string volRegime = "LOW"
+if volume > volSMA20 * 1.5
+    volRegime := "HIGH"
+else if volume > volSMA20
+    volRegime := "NORMAL"
+
+string trendBias = "MILD BEAR"
+if close > ema20 and ema20 > ema50 and ema50 > ema200
+    trendBias := "STRONG BULL"
+else if close < ema20 and ema20 < ema50 and ema50 < ema200
+    trendBias := "STRONG BEAR"
+else if close > ema50
+    trendBias := "MILD BULL"
+
+string londonStatus = "WAITING LOCK"
+if londonLocked
+    if bullSweep or bearSweep
+        londonStatus := "SWEEP ACTIVE"
+    else
+        londonStatus := "RANGE LOCKED"
+
+int confScore = 0
+if bullSweep or bearSweep
+    confScore += 30
+if bullFVG or bearFVG
+    confScore += 25
+if bosBull or bosBear
+    confScore += 20
+if rsiSmoothed < 35 or rsiSmoothed > 65
+    confScore += 15
+if volume > volSMA20 * 1.2
+    confScore += 10
+
+string confGrade = "LOW"
+if confScore >= 75
+    confGrade := "ELITE"
+else if confScore >= 50
+    confGrade := "HIGH"
+else if confScore >= 25
+    confGrade := "MED"
+
+if showDashboard and barstate.islast
+    string tPos = position.top_right
+    if dashPos == "Bottom Right"
+        tPos := position.bottom_right
+    else if dashPos == "Top Left"
+        tPos := position.top_left
+    else if dashPos == "Bottom Left"
+        tPos := position.bottom_left
+
+    table t = table.new(tPos, 2, 15, bgcolor=color.new(#01010F, 0), border_color=color.new(#1A4A7A, 40), border_width=1, frame_color=color.new(#00BFFF, 10), frame_width=2)
+
+    table.cell(t, 0, 0, " NEXOUS VIPv7.0.1 ", text_color=color.new(#00BFFF, 0), text_size=size.normal, bgcolor=color.new(#000D22, 0), text_halign=text.align_center)
+    table.merge_cells(t, 0, 0, 1, 0)
+
+    table.cell(t, 0, 1, "MEGA NEURAL DASHBOARD  v7.0", text_color=color.new(#FFD700, 0), text_size=size.small, bgcolor=color.new(#000D22, 10), text_halign=text.align_center)
+    table.merge_cells(t, 0, 1, 1, 1)
+
+    table.cell(t, 0, 2, "==============================", text_color=color.new(#003366, 0), text_size=size.tiny, bgcolor=color.new(#000D22, 10), text_halign=text.align_center)
+    table.merge_cells(t, 0, 2, 1, 2)
+
+    color LC = color.new(#7AB8E8, 0)
+    color RB = color.new(#02021A, 5)
+
+    color tCol = color.new(#FF3366, 0)
+    if str.contains(trendBias, "BULL")
+        tCol := color.new(#00FF88, 0)
+    table.cell(t, 0, 3, " TREND BIAS", text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 3, trendBias, text_color=tCol, text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+
+    color cCol = color.new(#FF3366, 0)
+    if confScore >= 75
+        cCol := color.new(#FFD700, 0)
+    else if confScore >= 50
+        cCol := color.new(#00FF88, 0)
+    else if confScore >= 25
+        cCol := color.new(#FFA500, 0)
+    table.cell(t, 0, 4, " CONFLUENCE", text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 4, str.tostring(confScore) + "%  " + confGrade, text_color=cCol, text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+
+    color lCol = color.new(#888888, 0)
+    if str.contains(londonStatus, "SWEEP")
+        lCol := color.new(#FFD700, 0)
+    else if str.contains(londonStatus, "LOCK")
+        lCol := color.new(#00FF88, 0)
+    table.cell(t, 0, 5, " LONDON STATUS", text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 5, londonStatus, text_color=lCol, text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+
+    string rngStr = "Awaiting..."
+    if londonLocked and not na(londonHigh)
+        rngStr := str.tostring(londonHigh, "#.#####") + " / " + str.tostring(londonLow, "#.#####")
+    table.cell(t, 0, 6, " LONDON H / L", text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 6, rngStr, text_color=color.new(#00BFFF, 0), text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+
+    string swStr = "No Sweep"
+    color  swCol = color.new(#444466, 0)
+    if bullSweep
+        swStr := "BULL SWEEP"
+        swCol := color.new(#00FF88, 0)
+    else if bearSweep
+        swStr := "BEAR SWEEP"
+        swCol := color.new(#FF3366, 0)
+    table.cell(t, 0, 7, " SWEEP SIGNAL", text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 7, swStr, text_color=swCol, text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+
+    string fStr = "No FVG"
+    color  fCol = color.new(#444466, 0)
+    if bullFVG
+        fStr := "Bull FVG  " + str.tostring(bullProb) + "%"
+        fCol := color.new(#00FF88, 0)
+    else if bearFVG
+        fStr := "Bear FVG  " + str.tostring(bearProb) + "%"
+        fCol := color.new(#FF3366, 0)
+    table.cell(t, 0, 8, " FVG PROB", text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 8, fStr, text_color=fCol, text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+
+    color vCol = color.new(#888888, 0)
+    if volRegime == "HIGH"
+        vCol := color.new(#FF3366, 0)
+    else if volRegime == "NORMAL"
+        vCol := color.new(#00FF88, 0)
+    table.cell(t, 0, 9, " VOLUME REGIME", text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 9, volRegime, text_color=vCol, text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+
+    color rCol = color.new(#FFD700, 0)
+    if rsiSmoothed > 70
+        rCol := color.new(#FF3366, 0)
+    else if rsiSmoothed < 30
+        rCol := color.new(#00FF88, 0)
+    table.cell(t, 0, 10, " RSI  (" + str.tostring(rsiLength) + ")", text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 10, str.tostring(rsiSmoothed, "#.##"), text_color=rCol, text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+
+    table.cell(t, 0, 11, " ATR TP  LONG",  text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 11, str.tostring(close + atr14 * 1.5, "#.#####"), text_color=color.new(#00FF88, 0), text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+    table.cell(t, 0, 12, " ATR TP  SHORT", text_color=LC, text_size=size.small, bgcolor=RB, text_halign=text.align_left)
+    table.cell(t, 1, 12, str.tostring(close - atr14 * 1.5, "#.#####"), text_color=color.new(#FF3366, 0), text_size=size.small, bgcolor=RB, text_halign=text.align_right)
+
+    table.cell(t, 0, 13, "==============================", text_color=color.new(#003366, 0), text_size=size.tiny, bgcolor=color.new(#000D22, 10), text_halign=text.align_center)
+    table.merge_cells(t, 0, 13, 1, 13)
+
+    table.cell(t, 0, 14, "© NEXOUS  —  All Rights Reserved", text_color=color.new(#1A3A5C, 0), text_size=size.tiny, bgcolor=color.new(#000D22, 10), text_halign=text.align_center)
+    table.merge_cells(t, 0, 14, 1, 14)
+
+bool bullFVGFilled = bullBots.size() > 0 and low  <= bullBots.get(bullBots.size()-1)
+bool bearFVGFilled = bearTops.size() > 0 and high >= bearTops.get(bearTops.size()-1)
+
+alertcondition(bullSweep,             "NEXOUS — Bull Sweep",       "NEXOUS Bull London Sweep on {{ticker}}")
+alertcondition(bearSweep,             "NEXOUS — Bear Sweep",       "NEXOUS Bear London Sweep on {{ticker}}")
+alertcondition(bullFVG,               "NEXOUS — Bull FVG",         "NEXOUS Bullish FVG on {{ticker}}")
+alertcondition(bearFVG,               "NEXOUS — Bear FVG",         "NEXOUS Bearish FVG on {{ticker}}")
+alertcondition(bullFVGFilled,         "NEXOUS — Bull FVG Filled",  "NEXOUS Bullish FVG filled on {{ticker}}")
+alertcondition(bearFVGFilled,         "NEXOUS — Bear FVG Filled",  "NEXOUS Bearish FVG filled on {{ticker}}")
+alertcondition(bosBull,               "NEXOUS — BOS Bull",         "NEXOUS Bullish BOS on {{ticker}}")
+alertcondition(bosBear,               "NEXOUS — BOS Bear",         "NEXOUS Bearish BOS on {{ticker}}")
+alertcondition(chochBull,             "NEXOUS — CHoCH Bull",       "NEXOUS Bullish CHoCH on {{ticker}}")
+alertcondition(chochBear,             "NEXOUS — CHoCH Bear",       "NEXOUS Bearish CHoCH on {{ticker}}")
+alertcondition(bullSweep and bullFVG, "NEXOUS — ELITE Bull Setup", "NEXOUS ELITE Bullish Setup on {{ticker}}")
+alertcondition(bearSweep and bearFVG, "NEXOUS — ELITE Bear Setup", "NEXOUS ELITE Bearish Setup on {{ticker}}")
+alertcondition(confScore >= 75,       "NEXOUS — Elite Confluence", "NEXOUS Elite Confluence Score on {{ticker}}")
