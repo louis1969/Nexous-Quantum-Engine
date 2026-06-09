@@ -1,0 +1,290 @@
+//@version=6
+indicator(title = "Nexous Quantum Indicator", shorttitle = "Nexous_cl", overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500)
+
+// ============================================================================
+// GROUPS
+// ============================================================================
+gGen  = "General"
+gMS   = "Market Structure"
+gFVG  = "Fair Value Gaps"
+gOB   = "Order Blocks"
+gTr   = "Trend Engine"
+gSes  = "Sessions"
+gDash = "Dashboard"
+
+// ============================================================================
+// GENERAL INPUTS
+// ============================================================================
+tz = input.string("Europe/Athens", "Ζώνη ώρας (Timezone)", options = ["Europe/Athens", "Europe/London", "America/New_York", "Asia/Tokyo", "Asia/Hong_Kong", "Asia/Shanghai", "GMT", "GMT+2", "GMT+3"], group = gGen)
+
+bullCol = input.color(#14d990, "Bullish", inline = "cc", group = gGen)
+bearCol = input.color(#f24968, "Bearish", inline = "cc", group = gGen)
+
+// ============================================================================
+// MARKET STRUCTURE INPUTS
+// ============================================================================
+showMS    = input.bool(true,  "Εμφάνιση Market Structure", group = gMS)
+swingLen  = input.int(10, "Swing Length", minval = 2, maxval = 100, group = gMS)
+showMSlab = input.bool(true,  "Εμφάνιση BOS / CHoCH ετικέτες", group = gMS)
+
+// ============================================================================
+// FAIR VALUE GAP INPUTS
+// ============================================================================
+showFVG  = input.bool(true, "Εμφάνιση Fair Value Gaps", group = gFVG)
+fvgExt   = input.int(20, "Επέκταση (bars)", minval = 1, maxval = 200, group = gFVG)
+fvgBull  = input.color(color.new(#14d990, 80), "Bullish FVG", inline = "f", group = gFVG)
+fvgBear  = input.color(color.new(#f24968, 80), "Bearish FVG", inline = "f", group = gFVG)
+
+// ============================================================================
+// ORDER BLOCK INPUTS
+// ============================================================================
+showOB  = input.bool(true, "Εμφάνιση Order Blocks", group = gOB)
+obExt   = input.int(20, "Επέκταση (bars)", minval = 1, maxval = 200, group = gOB)
+obMax   = input.int(4,  "Μέγιστα ανά πλευρά", minval = 1, maxval = 20, group = gOB)
+obBull  = input.color(color.new(#14d990, 75), "Bullish OB", inline = "o", group = gOB)
+obBear  = input.color(color.new(#f24968, 75), "Bearish OB", inline = "o", group = gOB)
+
+// ============================================================================
+// TREND ENGINE INPUTS (Zero-Lag EMA)
+// ============================================================================
+showTrend = input.bool(true, "Εμφάνιση Trend", group = gTr)
+trendSrc  = input.source(close, "Πηγή", group = gTr)
+trendLen  = input.int(34, "Μήκος", minval = 2, maxval = 400, group = gTr)
+
+// ============================================================================
+// SESSION INPUTS
+// ============================================================================
+showSes = input.bool(true, "Εμφάνιση Sessions (background)", group = gSes)
+
+asiaSes = input.session("0300-1100", "Ασία (Τόκιο/Χονγκ Κονγκ/Σαγκάη)", group = gSes)
+asiaCol = input.color(color.new(#14d990, 90), "Χρώμα Ασίας", group = gSes)
+
+lonSes  = input.session("1000-1830", "Λονδίνο", group = gSes)
+lonCol  = input.color(color.new(#f2b807, 90), "Χρώμα Λονδίνου", group = gSes)
+
+nySes   = input.session("1630-2300", "Νέα Υόρκη", group = gSes)
+nyCol   = input.color(color.new(#f24968, 90), "Χρώμα Νέας Υόρκης", group = gSes)
+
+// ============================================================================
+// DASHBOARD INPUTS
+// ============================================================================
+showDash = input.bool(true, "Εμφάνιση πίνακα", group = gDash)
+
+dashPosSel = input.string("Πάνω δεξιά", "Θέση πίνακα", options = ["Πάνω δεξιά", "Κάτω δεξιά", "Κάτω αριστερά", "Μέση δεξιά", "Κάτω στη μέση"], group = gDash)
+
+dashSizeSel = input.string("Μικρός", "Μέγεθος πίνακα", options = ["Πολύ μικρός", "Μικρός", "Μέτριος", "Μεγάλος", "Πολύ μεγάλος"], group = gDash)
+
+dashPos = switch dashPosSel
+    "Πάνω δεξιά"    => position.top_right
+    "Κάτω δεξιά"    => position.bottom_right
+    "Κάτω αριστερά" => position.bottom_left
+    "Μέση δεξιά"    => position.middle_right
+    "Κάτω στη μέση" => position.bottom_center
+    => position.top_right
+
+dashSize = switch dashSizeSel
+    "Πολύ μικρός"  => size.tiny
+    "Μικρός"       => size.small
+    "Μέτριος"      => size.normal
+    "Μεγάλος"      => size.large
+    "Πολύ μεγάλος" => size.huge
+    => size.small
+
+// ============================================================================
+// USER-DEFINED TYPES
+// ============================================================================
+type Zone
+    box   b
+    float top
+    float bot
+    bool  bull
+
+// ============================================================================
+// MARKET STRUCTURE
+// ============================================================================
+ph = ta.pivothigh(swingLen, swingLen)
+pl = ta.pivotlow(swingLen, swingLen)
+
+var float upLevel = na
+var float dnLevel = na
+var int   upX     = na
+var int   dnX     = na
+var int   msTrend = 0
+
+var int bosCount   = 0
+var int chochCount = 0
+
+if not na(ph)
+    upLevel := ph
+    upX     := bar_index - swingLen
+if not na(pl)
+    dnLevel := pl
+    dnX     := bar_index - swingLen
+
+bosUp = not na(upLevel) and ta.crossover(close, upLevel)
+bosDn = not na(dnLevel) and ta.crossunder(close, dnLevel)
+
+if showMS and bosUp
+    isChoch = msTrend < 0
+    if isChoch
+        chochCount += 1
+    else
+        bosCount += 1
+    if showMSlab
+        line.new(upX, upLevel, bar_index, upLevel, color = bullCol, style = line.style_dashed)
+        label.new(bar_index, upLevel, isChoch ? "CHoCH" : "BOS", color = color.new(bullCol, 100), textcolor = bullCol, style = label.style_label_down, size = size.small)
+    msTrend := 1
+    upLevel := na
+
+if showMS and bosDn
+    isChoch = msTrend > 0
+    if isChoch
+        chochCount += 1
+    else
+        bosCount += 1
+    if showMSlab
+        line.new(dnX, dnLevel, bar_index, dnLevel, color = bearCol, style = line.style_dashed)
+        label.new(bar_index, dnLevel, isChoch ? "CHoCH" : "BOS", color = color.new(bearCol, 100), textcolor = bearCol, style = label.style_label_up, size = size.small)
+    msTrend := -1
+    dnLevel := na
+
+// ============================================================================
+// FAIR VALUE GAPS
+// ============================================================================
+var array<Zone> fvgs = array.new<Zone>()
+
+bullFVG = low > high[2] and close[1] > high[2]
+bearFVG = high < low[2] and close[1] < low[2]
+
+if showFVG and bullFVG
+    b = box.new(bar_index - 2, low, bar_index + fvgExt, high[2], border_color = na, bgcolor = fvgBull)
+    array.push(fvgs, Zone.new(b, low, high[2], true))
+
+if showFVG and bearFVG
+    b = box.new(bar_index - 2, low[2], bar_index + fvgExt, high, border_color = na, bgcolor = fvgBear)
+    array.push(fvgs, Zone.new(b, low[2], high, false))
+
+if array.size(fvgs) > 0
+    for i = array.size(fvgs) - 1 to 0
+        f = array.get(fvgs, i)
+        filled = f.bull ? close < f.bot : close > f.top
+        if filled
+            box.delete(f.b)
+            array.remove(fvgs, i)
+
+// ============================================================================
+// ORDER BLOCKS (anchored to structure breaks)
+// ============================================================================
+var array<Zone> obBull_arr = array.new<Zone>()
+var array<Zone> obBear_arr = array.new<Zone>()
+
+findOB(bool bull) =>
+    int idx    = 1
+    bool found = false
+    for i = 1 to 30
+        cond = bull ? (close[i] < open[i]) : (close[i] > open[i])
+        if cond
+            idx   := i
+            found := true
+            break
+    [found, idx]
+
+if showOB and bosUp
+    [found, idx] = findOB(true)
+    if found
+        b = box.new(bar_index - idx, high[idx], bar_index + obExt, low[idx], border_color = color.new(bullCol, 40), bgcolor = obBull)
+        array.push(obBull_arr, Zone.new(b, high[idx], low[idx], true))
+        while array.size(obBull_arr) > obMax
+            old = array.shift(obBull_arr)
+            box.delete(old.b)
+
+if showOB and bosDn
+    [found, idx] = findOB(false)
+    if found
+        b = box.new(bar_index - idx, high[idx], bar_index + obExt, low[idx], border_color = color.new(bearCol, 40), bgcolor = obBear)
+        array.push(obBear_arr, Zone.new(b, high[idx], low[idx], false))
+        while array.size(obBear_arr) > obMax
+            old = array.shift(obBear_arr)
+            box.delete(old.b)
+
+if array.size(obBull_arr) > 0
+    for i = array.size(obBull_arr) - 1 to 0
+        z = array.get(obBull_arr, i)
+        if close < z.bot
+            box.delete(z.b)
+            array.remove(obBull_arr, i)
+
+if array.size(obBear_arr) > 0
+    for i = array.size(obBear_arr) - 1 to 0
+        z = array.get(obBear_arr, i)
+        if close > z.top
+            box.delete(z.b)
+            array.remove(obBear_arr, i)
+
+// ============================================================================
+// TREND ENGINE (Zero-Lag EMA)
+// ============================================================================
+lag      = math.floor((trendLen - 1) / 2)
+zlSrc    = trendSrc + (trendSrc - trendSrc[lag])
+zlema    = ta.ema(zlSrc, trendLen)
+trendUp  = zlema > zlema[1]
+trendCol = trendUp ? bullCol : bearCol
+plot(showTrend ? zlema : na, "Nexous Trend", color = trendCol, linewidth = 2)
+
+// ============================================================================
+// SESSIONS
+// ============================================================================
+inAsia = showSes and not na(time(timeframe.period, asiaSes, tz))
+inLon  = showSes and not na(time(timeframe.period, lonSes,  tz))
+inNY   = showSes and not na(time(timeframe.period, nySes,   tz))
+
+bgcolor(inAsia ? asiaCol : na, title = "Ασία")
+bgcolor(inLon  ? lonCol  : na, title = "Λονδίνο")
+bgcolor(inNY   ? nyCol   : na, title = "Νέα Υόρκη")
+
+sessTxt = (inAsia ? "Ασία " : "") + (inLon ? "Λονδίνο " : "") + (inNY ? "Ν.Υόρκη" : "")
+sessTxt := sessTxt == "" ? "—" : sessTxt
+
+// ============================================================================
+// DASHBOARD
+// ============================================================================
+onoff(bool b) => b ? "ON" : "OFF"
+onoffCol(bool b) => b ? bullCol : color.gray
+
+var table dash = table.new(dashPos, 2, 9, bgcolor = #1b1e27, border_color = #363a45, frame_color = #363a45, border_width = 1, frame_width = 1)
+
+if showDash and barstate.islast
+    table.cell(dash, 0, 0, "Nexous Quantum", text_color = color.white, text_size = dashSize, text_halign = text.align_left, bgcolor = #2a2e3a)
+    table.cell(dash, 1, 0, "Nexous_cl", text_color = color.new(color.white, 35), text_size = dashSize, text_halign = text.align_right, bgcolor = #2a2e3a)
+
+    table.cell(dash, 0, 1, "Τάση", text_color = color.gray, text_size = dashSize, text_halign = text.align_left)
+    table.cell(dash, 1, 1, trendUp ? "Ανοδική" : "Καθοδική", text_color = trendCol, text_size = dashSize)
+
+    table.cell(dash, 0, 2, "Δομή", text_color = color.gray, text_size = dashSize, text_halign = text.align_left)
+    table.cell(dash, 1, 2, msTrend > 0 ? "Bullish" : msTrend < 0 ? "Bearish" : "—", text_color = msTrend > 0 ? bullCol : msTrend < 0 ? bearCol : color.gray, text_size = dashSize)
+
+    table.cell(dash, 0, 3, "Session", text_color = color.gray, text_size = dashSize, text_halign = text.align_left)
+    table.cell(dash, 1, 3, sessTxt, text_color = color.white, text_size = dashSize)
+
+    table.cell(dash, 0, 4, "Market Structure", text_color = color.gray, text_size = dashSize, text_halign = text.align_left)
+    table.cell(dash, 1, 4, onoff(showMS), text_color = onoffCol(showMS), text_size = dashSize)
+
+    table.cell(dash, 0, 5, "Fair Value Gaps (" + str.tostring(array.size(fvgs)) + ")", text_color = color.gray, text_size = dashSize, text_halign = text.align_left)
+    table.cell(dash, 1, 5, onoff(showFVG), text_color = onoffCol(showFVG), text_size = dashSize)
+
+    table.cell(dash, 0, 6, "Order Blocks (" + str.tostring(array.size(obBull_arr) + array.size(obBear_arr)) + ")", text_color = color.gray, text_size = dashSize, text_halign = text.align_left)
+    table.cell(dash, 1, 6, onoff(showOB), text_color = onoffCol(showOB), text_size = dashSize)
+
+    table.cell(dash, 0, 7, "Trend Engine", text_color = color.gray, text_size = dashSize, text_halign = text.align_left)
+    table.cell(dash, 1, 7, onoff(showTrend), text_color = onoffCol(showTrend), text_size = dashSize)
+
+    table.cell(dash, 0, 8, "Sessions", text_color = color.gray, text_size = dashSize, text_halign = text.align_left)
+    table.cell(dash, 1, 8, onoff(showSes), text_color = onoffCol(showSes), text_size = dashSize)
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+alertcondition(bosUp,   "Bullish Break", "Nexous: Bullish structure break")
+alertcondition(bosDn,   "Bearish Break", "Nexous: Bearish structure break")
+alertcondition(bullFVG, "Bullish FVG",   "Nexous: Bullish FVG formed")
+alertcondition(bearFVG, "Bearish FVG",   "Nexous: Bearish FVG formed")
