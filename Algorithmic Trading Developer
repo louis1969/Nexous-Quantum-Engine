@@ -1,0 +1,14 @@
+Over the past few months, I’ve been developing the Nexous Quantum Engine, a custom Python-based trading framework built to track smart money concepts and institutional order flow.
+
+Instead of relying on standard lagging indicators, I engineered algorithms to dynamically detect:
+🔹 Market Structure Shifts: Automated BOS (Break of Structure) & CHoCH (Change of Character) signaling.
+🔹 Institutional Order Flow: Real-time Point of Control (POC) tracking.
+🔹 Volume Profiling: Filtering market noise to identify true "Whale Volume" (RVOL) during active NY/London sessions.
+
+As any Quant or Algo Developer knows, a strategy is only as good as its code stability. That’s why I’ve prioritized logical robustness by implementing comprehensive unit testing using pytest, ensuring that mathematical models and edge cases behave exactly as intended before seeing live market data. 💻📈
+
+I am currently exploring new opportunities in the Fintech, Prop Trading, and Algorithmic Trading space here in Cyprus (Limassol/Nicosia). Always open to connecting with professionals who share a passion for quantitative analysis, clean Python code, and market mechanics!
+
+Let's connect! 🤝
+
+#AlgorithmicTrading #PythonDeveloper #QuantitativeAnalysis #Fintech #CyprusTech #Limassol #SmartMoneyConcepts #Pytest #SoftwareEngineering #TradingAlgorithms
