@@ -1,0 +1,1051 @@
+// This Pine Script® code is subject to the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © NEXOUS Elite Trading System v2.0
+
+//@version=5
+indicator("NEXOUS Elite Trading System v2.0", shorttitle="NEXOUS v2", overlay=true,
+          max_boxes_count=500, max_lines_count=500, max_labels_count=500)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 1: INPUTS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// EMA Ribbon
+grpEMA       = "EMA Ribbon Settings"
+ema9Len      = input.int(9,  "EMA Fast",   minval=1, group=grpEMA)
+ema21Len     = input.int(21, "EMA Mid",    minval=1, group=grpEMA)
+ema55Len     = input.int(55, "EMA Slow",   minval=1, group=grpEMA)
+showEMA      = input.bool(true, "Show EMA Ribbon", group=grpEMA)
+
+// VWAP
+grpVWAP      = "VWAP Settings"
+showVWAP     = input.bool(true, "Show VWAP", group=grpVWAP)
+
+// ATR & Stop Loss
+grpATR       = "ATR & Stop Loss Settings"
+atrLen       = input.int(14,  "ATR Length",              minval=1,   group=grpATR)
+atrMult      = input.float(1.5, "ATR Multiplier for SL", step=0.1,  group=grpATR)
+atrTF        = input.timeframe("5", "ATR Source Timeframe",          group=grpATR)
+
+// RSI
+grpRSI       = "RSI Settings"
+rsiLen       = input.int(14, "RSI Length",    minval=2,  group=grpRSI)
+rsiOB        = input.int(70, "RSI Overbought",minval=50, group=grpRSI)
+rsiOS        = input.int(30, "RSI Oversold",  maxval=50, group=grpRSI)
+rsiTF        = input.timeframe("5", "RSI HTF Timeframe", group=grpRSI)
+
+// MACD
+grpMACD      = "MACD Settings"
+macdFast     = input.int(12, "MACD Fast",   minval=1, group=grpMACD)
+macdSlow     = input.int(26, "MACD Slow",   minval=1, group=grpMACD)
+macdSig      = input.int(9,  "MACD Signal", minval=1, group=grpMACD)
+
+// ADX & DMI
+grpADX       = "ADX & DMI Settings"
+adxLen       = input.int(14, "ADX Length",          minval=1,  group=grpADX)
+adxThresh    = input.int(20, "ADX Trend Threshold",  minval=1,  group=grpADX)
+
+// Volume
+grpVol       = "Volume Settings"
+volSMALen    = input.int(20,  "Volume SMA Length",        minval=1,   group=grpVol)
+volMult      = input.float(1.5,"Volume Spike Multiplier", step=0.1,   group=grpVol)
+
+// Pivot
+grpPivot     = "Pivot Lookback Settings"
+pivotLB      = input.int(5,  "Pivot Lookback", minval=2, maxval=20, group=grpPivot)
+
+// Order Blocks & Market Structure
+grpOB        = "Order Blocks & Structure"
+showOB       = input.bool(true, "Show Order Blocks",     group=grpOB)
+obLookback   = input.int(30,   "OB History Bars",        group=grpOB)
+showFVG      = input.bool(true, "Show Fair Value Gaps",  group=grpOB)
+showLiq      = input.bool(true, "Show Liquidity Sweeps", group=grpOB)
+showEQHL     = input.bool(true, "Show EQH / EQL",        group=grpOB)
+eqTolPct     = input.float(0.5,"ATR Tolerance % for EQH/EQL", step=0.1, group=grpOB)
+
+// Sessions
+grpSess      = "Session Range Boxes"
+showLondon   = input.bool(true,  "London  (07:00–15:00 UTC)", group=grpSess)
+showNY       = input.bool(true,  "New York (13:30–20:00 UTC)", group=grpSess)
+showTokyo    = input.bool(false, "Tokyo   (00:00–09:00 UTC)",  group=grpSess)
+showSydney   = input.bool(false, "Sydney  (22:00–07:00 UTC)",  group=grpSess)
+
+// Fibonacci
+grpFib       = "Fibonacci Engine"
+showFib      = input.bool(true, "Auto-Draw Fibonacci",   group=grpFib)
+
+// Confluence
+grpConf      = "Confluence & Signals"
+confThresh   = input.int(68, "Min Confluence Score %", minval=50, maxval=100, group=grpConf)
+showDots     = input.bool(true,  "Show Dot   Signals", group=grpConf)
+showStars    = input.bool(true,  "Show Star  Signals", group=grpConf)
+showArrows   = input.bool(true,  "Show Arrow Signals", group=grpConf)
+showDiamonds = input.bool(true,  "Show Diamond Signals",group=grpConf)
+respectSup   = input.bool(true,  "Respect Support Bounce Mode", group=grpConf)
+
+// Patterns
+grpPat       = "Advanced Pattern Engine"
+showPat      = input.bool(true, "Show Candlestick Patterns", group=grpPat)
+
+// Forecast
+grpFC        = "10-Candle Forecast"
+showForecast = input.bool(true, "Show Future Forecast Line",   group=grpFC)
+showRibbon   = input.bool(true, "Show Next-Candle Ribbon",     group=grpFC)
+
+// MTF
+grpMTF       = "Multi-Timeframe Stack"
+showMTF      = input.bool(true, "Show MTF Stack Table", group=grpMTF)
+
+// Dashboard
+grpDash      = "NEXOUS Dashboard Settings"
+showDash     = input.bool(true, "Show Dashboard", group=grpDash)
+dashSzInput  = input.string("Μικρός","Μέγεθος Πίνακα",
+               options=["Μικρός","Μεγάλος","Πολύ Μεγάλος"], group=grpDash)
+
+getDashSize(sz) =>
+    switch sz
+        "Μικρός"       => size.small
+        "Μεγάλος"      => size.normal
+        "Πολύ Μεγάλος" => size.large
+        => size.small
+
+txtSz = getDashSize(dashSzInput)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 2: CORE INDICATORS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// EMA Ribbon
+ema9  = ta.ema(close, ema9Len)
+ema21 = ta.ema(close, ema21Len)
+ema55 = ta.ema(close, ema55Len)
+
+p_ema9  = plot(showEMA ? ema9  : na, "EMA 9",  color=color.new(color.lime,   0), linewidth=1)
+p_ema21 = plot(showEMA ? ema21 : na, "EMA 21", color=color.new(color.yellow, 0), linewidth=1)
+p_ema55 = plot(showEMA ? ema55 : na, "EMA 55", color=color.new(color.red,    0), linewidth=2)
+p_rib1  = plot(showEMA ? ema9  : na, display=display.none)
+p_rib2  = plot(showEMA ? ema55 : na, display=display.none)
+fill(p_rib1, p_rib2, color=ema9 > ema55 ? color.new(color.lime, 85) : color.new(color.red, 85))
+
+// VWAP
+vwapVal = ta.vwap(hlc3)
+plot(showVWAP ? vwapVal : na, "VWAP", color=color.new(color.blue, 0), linewidth=2)
+
+// ATR
+atrCur = ta.atr(atrLen)
+atrHTF = request.security(syminfo.tickerid, atrTF, ta.atr(atrLen), lookahead=barmerge.lookahead_off)
+
+// RSI
+rsiCur = ta.rsi(close, rsiLen)
+rsiHTF = request.security(syminfo.tickerid, rsiTF, ta.rsi(close, rsiLen), lookahead=barmerge.lookahead_off)
+
+// MACD
+[macdLine, macdSigLine, macdHist] = ta.macd(close, macdFast, macdSlow, macdSig)
+
+// ADX & DMI
+[diPlus, diMinus, adxVal] = ta.dmi(adxLen, adxLen)
+hasTrend    = adxVal > adxThresh
+isBullTrend = diPlus  > diMinus and hasTrend
+isBearTrend = diMinus > diPlus  and hasTrend
+
+// Volume
+volSMA  = ta.sma(volume, volSMALen)
+highVol = volume > volSMA * volMult
+normVol = volume > volSMA
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 3: CANDLE ANATOMY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+candleRange    = high - low
+bodySize       = math.abs(close - open)
+upperWick      = high  - math.max(open, close)
+lowerWick      = math.min(open, close) - low
+bodyRatio      = candleRange > 0 ? bodySize   / candleRange : 0
+upperWickRatio = candleRange > 0 ? upperWick  / candleRange : 0
+lowerWickRatio = candleRange > 0 ? lowerWick  / candleRange : 0
+
+bullReclaim = close > open and lowerWick > bodySize * 1.5
+bearReject  = close < open and upperWick > bodySize * 1.5
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 4: Z-SCORE MOMENTUM
+// ═══════════════════════════════════════════════════════════════════════════════
+
+zsLen   = 20
+chg     = close - close[1]
+zsMean  = ta.sma(chg, zsLen)
+zsStd   = ta.stdev(chg, zsLen)
+zScore  = zsStd != 0 ? (chg - zsMean) / zsStd : 0.0
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 5: REGIME ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+emaBandWidth  = math.abs(ema9 - ema55) / ema55 * 100
+emaCompressed = emaBandWidth < 0.10
+emaTrending   = emaBandWidth > 0.30
+
+regimeExpansion   = highVol and hasTrend and math.abs(zScore) > 1.5
+regimeCompression = emaCompressed and not hasTrend
+regimeTrend       = hasTrend and emaTrending and not regimeExpansion
+regimeChop        = not hasTrend and not emaCompressed
+
+marketRegime = regimeExpansion   ? "EXPANSION"   :
+               regimeCompression ? "COMPRESSION" :
+               regimeTrend       ? "TREND"       :
+                                   "CHOP"
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 6: PIVOT LOOKBACK ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+pivotHigh = ta.pivothigh(high, pivotLB, pivotLB)
+pivotLow  = ta.pivotlow (low,  pivotLB, pivotLB)
+
+var float lastPH    = na
+var float lastPL    = na
+var int   lastPHBar = na
+var int   lastPLBar = na
+
+if not na(pivotHigh)
+    lastPH    := pivotHigh
+    lastPHBar := bar_index - pivotLB
+
+if not na(pivotLow)
+    lastPL    := pivotLow
+    lastPLBar := bar_index - pivotLB
+
+if not na(pivotHigh)
+    label.new(bar_index - pivotLB, pivotHigh, "H",
+              color=color.new(color.red, 70), textcolor=color.white,
+              style=label.style_label_down, size=size.tiny)
+
+if not na(pivotLow)
+    label.new(bar_index - pivotLB, pivotLow, "L",
+              color=color.new(color.lime, 70), textcolor=color.white,
+              style=label.style_label_up, size=size.tiny)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 7: MSB & BMS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// MSB: wick breaks structure
+msbBull = not na(lastPH) and high > lastPH and close < lastPH
+msbBear = not na(lastPL) and low  < lastPL and close > lastPL
+
+// BMS: body-close confirms break
+bmsBull = not na(lastPH) and close > lastPH
+bmsBear = not na(lastPL) and close < lastPL
+
+if msbBull
+    label.new(bar_index, low, "MSB↑", color=color.new(color.lime, 50),
+              textcolor=color.white, style=label.style_label_up, size=size.tiny)
+if msbBear
+    label.new(bar_index, high, "MSB↓", color=color.new(color.red, 50),
+              textcolor=color.white, style=label.style_label_down, size=size.tiny)
+if bmsBull
+    label.new(bar_index, low, "BMS↑", color=color.new(color.lime, 20),
+              textcolor=color.white, style=label.style_label_up, size=size.tiny)
+if bmsBear
+    label.new(bar_index, high, "BMS↓", color=color.new(color.red, 20),
+              textcolor=color.white, style=label.style_label_down, size=size.tiny)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 8: ORDER BLOCK ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var box[]  obBoxes    = array.new<box>()
+var bool[] obIsBull   = array.new<bool>()
+var bool[] obMitig    = array.new<bool>()
+var int[]  obCreated  = array.new<int>()
+
+obBullCond = close[1] < open[1] and close > open and close > high[1]
+obBearCond = close[1] > open[1] and close < open and close < low[1]
+
+if showOB and obBullCond
+    q = 50 + (highVol ? 20 : 0) + (bmsBull ? 15 : 0) + (rsiCur < 50 ? 15 : 0)
+    obQ = math.min(100, q)
+    isHPZ = obQ >= 80
+    bc = isHPZ ? color.new(color.aqua, 75) : color.new(color.lime, 82)
+    brd = isHPZ ? color.new(color.aqua, 30) : color.new(color.lime, 40)
+    b = box.new(bar_index - 1, high[1], bar_index + 20, low[1], bgcolor=bc, border_color=brd, border_width=1)
+    // POC midline
+    line.new(bar_index - 1, (high[1] + low[1]) / 2, bar_index + 20, (high[1] + low[1]) / 2,
+             color=color.new(color.lime, 0), style=line.style_dotted, width=1)
+    label.new(bar_index - 1, high[1], "OB " + str.tostring(obQ) + "%",
+              color=bc, textcolor=color.white, style=label.style_label_down, size=size.tiny)
+    array.push(obBoxes,   b)
+    array.push(obIsBull,  true)
+    array.push(obMitig,   false)
+    array.push(obCreated, bar_index)
+
+if showOB and obBearCond
+    q = 50 + (highVol ? 20 : 0) + (bmsBear ? 15 : 0) + (rsiCur > 50 ? 15 : 0)
+    obQ = math.min(100, q)
+    isHPZ = obQ >= 80
+    bc = isHPZ ? color.new(color.orange, 75) : color.new(color.red, 82)
+    brd = isHPZ ? color.new(color.orange, 30) : color.new(color.red, 40)
+    b = box.new(bar_index - 1, high[1], bar_index + 20, low[1], bgcolor=bc, border_color=brd, border_width=1)
+    line.new(bar_index - 1, (high[1] + low[1]) / 2, bar_index + 20, (high[1] + low[1]) / 2,
+             color=color.new(color.red, 0), style=line.style_dotted, width=1)
+    label.new(bar_index - 1, low[1], "OB " + str.tostring(obQ) + "%",
+              color=bc, textcolor=color.white, style=label.style_label_up, size=size.tiny)
+    array.push(obBoxes,   b)
+    array.push(obIsBull,  false)
+    array.push(obMitig,   false)
+    array.push(obCreated, bar_index)
+
+// OB mitigation & cleanup
+if array.size(obBoxes) > 0
+    for i = array.size(obBoxes) - 1 to 0
+        if i < array.size(obBoxes)
+            b      = array.get(obBoxes, i)
+            isBull = array.get(obIsBull, i)
+            mitig  = array.get(obMitig, i)
+            crBar  = array.get(obCreated, i)
+            bTop   = box.get_top(b)
+            bBot   = box.get_bottom(b)
+
+            box.set_right(b, bar_index + 3)
+
+            if not mitig
+                if isBull and close < bBot
+                    array.set(obMitig, i, true)
+                    box.set_bgcolor(b, color.new(color.gray, 92))
+                    box.set_border_color(b, color.new(color.gray, 70))
+                if not isBull and close > bTop
+                    array.set(obMitig, i, true)
+                    box.set_bgcolor(b, color.new(color.gray, 92))
+                    box.set_border_color(b, color.new(color.gray, 70))
+
+            if bar_index - crBar > obLookback * 4
+                box.delete(b)
+                array.remove(obBoxes, i)
+                array.remove(obIsBull, i)
+                array.remove(obMitig, i)
+                array.remove(obCreated, i)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 9: FAIR VALUE GAPS (FVG)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var box[]  fvgBoxes  = array.new<box>()
+var bool[] fvgFilled = array.new<bool>()
+var int[]  fvgBars   = array.new<int>()
+
+bullFVG = low > high[2]
+bearFVG = high < low[2]
+
+if showFVG and bullFVG
+    fb = box.new(bar_index - 2, low, bar_index + 15, high[2],
+                 bgcolor=color.new(color.lime, 88), border_color=color.new(color.lime, 55))
+    array.push(fvgBoxes,  fb)
+    array.push(fvgFilled, false)
+    array.push(fvgBars,   bar_index)
+
+if showFVG and bearFVG
+    fb = box.new(bar_index - 2, low[2], bar_index + 15, high,
+                 bgcolor=color.new(color.red, 88), border_color=color.new(color.red, 55))
+    array.push(fvgBoxes,  fb)
+    array.push(fvgFilled, false)
+    array.push(fvgBars,   bar_index)
+
+if array.size(fvgBoxes) > 0
+    for i = array.size(fvgBoxes) - 1 to 0
+        if i < array.size(fvgBoxes)
+            fb     = array.get(fvgBoxes, i)
+            filled = array.get(fvgFilled, i)
+            crBar  = array.get(fvgBars, i)
+            fbTop  = box.get_top(fb)
+            fbBot  = box.get_bottom(fb)
+
+            box.set_right(fb, bar_index + 3)
+
+            if not filled and low < fbTop and high > fbBot
+                array.set(fvgFilled, i, true)
+                box.set_bgcolor(fb, color.new(color.gray, 95))
+
+            if bar_index - crBar > 60
+                box.delete(fb)
+                array.remove(fvgBoxes, i)
+                array.remove(fvgFilled, i)
+                array.remove(fvgBars, i)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 10: LIQUIDITY SWEEPS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+swHigh5 = ta.highest(high, 5)[1]
+swLow5  = ta.lowest (low,  5)[1]
+
+bullLiqSweep = showLiq and low  < swLow5  and close > swLow5
+bearLiqSweep = showLiq and high > swHigh5 and close < swHigh5
+
+plotshape(bullLiqSweep, "Bull Liq ⚡", shape.labelup,   location.belowbar,
+          color=color.new(color.yellow, 0), textcolor=color.black, text="⚡", size=size.small)
+plotshape(bearLiqSweep, "Bear Liq ⚡", shape.labeldown, location.abovebar,
+          color=color.new(color.yellow, 0), textcolor=color.black, text="⚡", size=size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 11: EQH / EQL
+// ═══════════════════════════════════════════════════════════════════════════════
+
+eqATR = ta.atr(14)
+eqTol = eqATR * eqTolPct / 100.0
+
+eqhCond = showEQHL and not na(pivotHigh) and not na(lastPH) and
+          math.abs(pivotHigh - lastPH) <= eqTol and
+          (bar_index - pivotLB) - lastPHBar > 2
+
+eqlCond = showEQHL and not na(pivotLow) and not na(lastPL) and
+          math.abs(pivotLow - lastPL) <= eqTol and
+          (bar_index - pivotLB) - lastPLBar > 2
+
+if eqhCond
+    line.new(lastPHBar, lastPH, bar_index - pivotLB, pivotHigh,
+             color=color.new(color.orange, 0), style=line.style_dashed, width=1)
+    label.new(bar_index - pivotLB, pivotHigh, "EQH",
+              color=color.new(color.orange, 60), textcolor=color.white,
+              style=label.style_label_down, size=size.tiny)
+
+if eqlCond
+    line.new(lastPLBar, lastPL, bar_index - pivotLB, pivotLow,
+             color=color.new(color.aqua, 0), style=line.style_dashed, width=1)
+    label.new(bar_index - pivotLB, pivotLow, "EQL",
+              color=color.new(color.aqua, 60), textcolor=color.white,
+              style=label.style_label_up, size=size.tiny)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 12: SESSION RANGE BOXES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+isLondon = not na(time("D", "0700-1500", "UTC"))
+isNY     = not na(time("D", "1330-2000", "UTC"))
+isTokyo  = not na(time("D", "0000-0900", "UTC"))
+isSydney = not na(time("D", "2200-0700", "UTC"))
+
+var float lonH  = na
+var float lonL  = na
+var int   lonSt = na
+var float nyH   = na
+var float nyL   = na
+var int   nySt  = na
+var float tokH  = na
+var float tokL  = na
+var int   tokSt = na
+var float sydH  = na
+var float sydL  = na
+var int   sydSt = na
+
+if isLondon and not isLondon[1]
+    lonH  := high
+    lonL  := low
+    lonSt := bar_index
+else if isLondon
+    lonH := math.max(nz(lonH, high), high)
+    lonL := math.min(nz(lonL, low),  low)
+
+if isNY and not isNY[1]
+    nyH  := high
+    nyL  := low
+    nySt := bar_index
+else if isNY
+    nyH := math.max(nz(nyH, high), high)
+    nyL := math.min(nz(nyL, low),  low)
+
+if isTokyo and not isTokyo[1]
+    tokH  := high
+    tokL  := low
+    tokSt := bar_index
+else if isTokyo
+    tokH := math.max(nz(tokH, high), high)
+    tokL := math.min(nz(tokL, low),  low)
+
+if isSydney and not isSydney[1]
+    sydH  := high
+    sydL  := low
+    sydSt := bar_index
+else if isSydney
+    sydH := math.max(nz(sydH, high), high)
+    sydL := math.min(nz(sydL, low),  low)
+
+if showLondon and not isLondon and isLondon[1] and not na(lonSt)
+    box.new(lonSt, lonH, bar_index, lonL, bgcolor=color.new(color.blue, 90), border_color=color.new(color.blue, 50), border_width=1)
+    label.new(lonSt, lonH, "LON", color=color.new(color.blue, 60), textcolor=color.white, style=label.style_label_right, size=size.tiny)
+
+if showNY and not isNY and isNY[1] and not na(nySt)
+    box.new(nySt, nyH, bar_index, nyL, bgcolor=color.new(color.green, 90), border_color=color.new(color.green, 50), border_width=1)
+    label.new(nySt, nyH, "NY", color=color.new(color.green, 60), textcolor=color.white, style=label.style_label_right, size=size.tiny)
+
+if showTokyo and not isTokyo and isTokyo[1] and not na(tokSt)
+    box.new(tokSt, tokH, bar_index, tokL, bgcolor=color.new(color.purple, 90), border_color=color.new(color.purple, 50), border_width=1)
+    label.new(tokSt, tokH, "TKY", color=color.new(color.purple, 60), textcolor=color.white, style=label.style_label_right, size=size.tiny)
+
+if showSydney and not isSydney and isSydney[1] and not na(sydSt)
+    box.new(sydSt, sydH, bar_index, sydL, bgcolor=color.new(color.orange, 90), border_color=color.new(color.orange, 50), border_width=1)
+    label.new(sydSt, sydH, "SYD", color=color.new(color.orange, 60), textcolor=color.white, style=label.style_label_right, size=size.tiny)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 13: MULTI-TIMEFRAME STACK (M5 → Monthly)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+getTFBias(tf) =>
+    e9h  = request.security(syminfo.tickerid, tf, ta.ema(close, 9),  lookahead=barmerge.lookahead_off)
+    e55h = request.security(syminfo.tickerid, tf, ta.ema(close, 55), lookahead=barmerge.lookahead_off)
+    e9h > e55h ? 1 : -1
+
+tfM5  = getTFBias("5")
+tfM15 = getTFBias("15")
+tfM30 = getTFBias("30")
+tfH1  = getTFBias("60")
+tfH4  = getTFBias("240")
+tfD1  = getTFBias("D")
+tfW1  = getTFBias("W")
+
+mtfBullCnt = (tfM5  > 0 ? 1 : 0) + (tfM15 > 0 ? 1 : 0) + (tfM30 > 0 ? 1 : 0) +
+             (tfH1  > 0 ? 1 : 0) + (tfH4  > 0 ? 1 : 0) + (tfD1  > 0 ? 1 : 0) +
+             (tfW1  > 0 ? 1 : 0)
+mtfBearCnt = 7 - mtfBullCnt
+
+mtfBias    = mtfBullCnt >= 5 ? "BULL" : mtfBearCnt >= 5 ? "BEAR" : "MIXED"
+mtfHTFBias = tfH4 > 0 and tfD1 > 0 ? 1 : tfH4 < 0 and tfD1 < 0 ? -1 : 0
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 14: 35-SCOUT CONFIRMATION GATE (M5)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+m5Cl  = request.security(syminfo.tickerid, "5", close,           lookahead=barmerge.lookahead_off)
+m5Op  = request.security(syminfo.tickerid, "5", open,            lookahead=barmerge.lookahead_off)
+m5Vol = request.security(syminfo.tickerid, "5", volume,          lookahead=barmerge.lookahead_off)
+m5VSM = request.security(syminfo.tickerid, "5", ta.sma(volume, 20), lookahead=barmerge.lookahead_off)
+
+scoutBull = m5Cl > m5Op and m5Vol > m5VSM
+scoutBear = m5Cl < m5Op and m5Vol > m5VSM
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 15: SUPPORT / RESISTANCE ZONES MATRIX
+// ═══════════════════════════════════════════════════════════════════════════════
+
+srLen  = 50
+srHigh = ta.highest(high, srLen)
+srLow  = ta.lowest (low,  srLen)
+srMid  = (srHigh + srLow) / 2.0
+
+nearRes = math.abs(close - srHigh) / close < 0.003
+nearSup = math.abs(close - srLow)  / close < 0.003
+
+plot(srHigh, "S/R High", color=color.new(color.red,  75), linewidth=1, style=plot.style_line)
+plot(srLow,  "S/R Low",  color=color.new(color.lime, 75), linewidth=1, style=plot.style_line)
+plot(srMid,  "S/R Mid",  color=color.new(color.gray, 80), linewidth=1, style=plot.style_line)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 16: ADVANCED PATTERN ENGINE (11 patterns)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// 1. Bull Engulfing
+bullEngulf = close > open and close[1] < open[1] and open <= close[1] and close >= open[1]
+// 2. Bear Engulfing
+bearEngulf = close < open and close[1] > open[1] and open >= close[1] and close <= open[1]
+// 3. Doji
+dojiCond   = bodyRatio < 0.10 and candleRange > 0
+// 4. Marubozu Bull / Bear
+marubBull  = close > open and bodyRatio > 0.90
+marubBear  = close < open and bodyRatio > 0.90
+// 5. Hammer
+hammerCond = lowerWickRatio > 0.60 and upperWickRatio < 0.10 and close > open
+// 6. Shooting Star
+shootStar  = upperWickRatio > 0.60 and lowerWickRatio < 0.10 and close < open
+// 7. Double Top / 8. Double Bottom (via pivot equality)
+dblTop = not na(pivotHigh) and not na(lastPH) and math.abs(pivotHigh - lastPH) < eqTol * 2 and bmsBear
+dblBot = not na(pivotLow)  and not na(lastPL) and math.abs(pivotLow  - lastPL) < eqTol * 2 and bmsBull
+// 9. Bull Flag
+bullFlag = ema9 > ema21 and close > ema9 and macdHist > 0 and macdHist < macdHist[3]
+// 10. Bear Flag
+bearFlag = ema9 < ema21 and close < ema9 and macdHist < 0 and macdHist > macdHist[3]
+// 11. Bull Trap / Bear Trap
+bullTrap = high > swHigh5 and close < swHigh5
+bearTrap = low  < swLow5  and close > swLow5
+// 12. Breakout Retest / Bear Breakout Retest
+brkRetest  = bmsBull and not na(lastPH) and low > lastPH * 0.999 and low < lastPH * 1.003
+brkRetestB = bmsBear and not na(lastPL) and high < lastPL * 1.001 and high > lastPL * 0.997
+
+if showPat
+    if bullEngulf
+        label.new(bar_index, low, "BE↑", color=color.new(color.lime, 50),
+                  textcolor=color.black, style=label.style_label_up, size=size.tiny)
+    if bearEngulf
+        label.new(bar_index, high, "BE↓", color=color.new(color.red, 50),
+                  textcolor=color.white, style=label.style_label_down, size=size.tiny)
+    if hammerCond
+        label.new(bar_index, low, "🔨", color=color.new(color.lime, 60),
+                  textcolor=color.black, style=label.style_label_up, size=size.tiny)
+    if shootStar
+        label.new(bar_index, high, "✦", color=color.new(color.red, 60),
+                  textcolor=color.white, style=label.style_label_down, size=size.tiny)
+    if dojiCond
+        label.new(bar_index, high, "D", color=color.new(color.yellow, 60),
+                  textcolor=color.black, style=label.style_label_down, size=size.tiny)
+    if dblTop
+        label.new(bar_index, high, "⊤⊤", color=color.new(color.red, 40),
+                  textcolor=color.white, style=label.style_label_down, size=size.tiny)
+    if dblBot
+        label.new(bar_index, low, "⊥⊥", color=color.new(color.lime, 40),
+                  textcolor=color.white, style=label.style_label_up, size=size.tiny)
+    if bullTrap
+        label.new(bar_index, high, "TRAP↑", color=color.new(color.orange, 50),
+                  textcolor=color.white, style=label.style_label_down, size=size.tiny)
+    if bearTrap
+        label.new(bar_index, low, "TRAP↓", color=color.new(color.orange, 50),
+                  textcolor=color.white, style=label.style_label_up, size=size.tiny)
+    if brkRetest
+        label.new(bar_index, low, "BRK↑RT", color=color.new(color.aqua, 50),
+                  textcolor=color.black, style=label.style_label_up, size=size.tiny)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 17: 36-FACTOR MASTER CONFIDENCE ENGINE
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// --- BULL FACTORS ---
+f01 = ema9  > ema21              ? 1 : 0
+f02 = ema21 > ema55              ? 1 : 0
+f03 = close > vwapVal            ? 1 : 0
+f04 = rsiCur > 50                ? 1 : 0
+f05 = rsiHTF > 50                ? 1 : 0
+f06 = macdLine > macdSigLine     ? 1 : 0
+f07 = macdHist > 0               ? 1 : 0
+f08 = macdHist > macdHist[1]     ? 1 : 0
+f09 = diPlus > diMinus           ? 1 : 0
+f10 = adxVal > adxThresh         ? 1 : 0
+f11 = normVol                    ? 1 : 0
+f12 = highVol                    ? 1 : 0
+f13 = zScore > 0.5               ? 1 : 0
+f14 = close > ema9               ? 1 : 0
+f15 = bullReclaim                ? 1 : 0
+f16 = mtfHTFBias > 0             ? 1 : 0
+f17 = tfH4 > 0                   ? 1 : 0
+f18 = tfD1 > 0                   ? 1 : 0
+f19 = mtfBullCnt >= 4            ? 1 : 0
+f20 = scoutBull                  ? 1 : 0
+f21 = bmsBull                    ? 1 : 0
+f22 = not bmsBear                ? 1 : 0
+f23 = bullEngulf                 ? 1 : 0
+f24 = hammerCond                 ? 1 : 0
+f25 = not bearReject             ? 1 : 0
+f26 = nearSup                    ? 1 : 0
+f27 = rsiCur > 40 and rsiCur < 70 ? 1 : 0
+f28 = close > srMid              ? 1 : 0
+f29 = bullLiqSweep               ? 1 : 0
+f30 = marubBull                  ? 1 : 0
+f31 = bullFlag                   ? 1 : 0
+f32 = brkRetest                  ? 1 : 0
+f33 = not regimeChop             ? 1 : 0
+f34 = regimeTrend or regimeExpansion ? 1 : 0
+f35 = bodyRatio > 0.5 and close > open ? 1 : 0
+f36 = lowerWickRatio < 0.20      ? 1 : 0
+
+bullScore = (f01+f02+f03+f04+f05+f06+f07+f08+f09+f10+f11+f12+f13+f14+f15+f16+f17+f18+
+             f19+f20+f21+f22+f23+f24+f25+f26+f27+f28+f29+f30+f31+f32+f33+f34+f35+f36) * 100 / 36
+
+// --- BEAR FACTORS ---
+b01 = ema9  < ema21              ? 1 : 0
+b02 = ema21 < ema55              ? 1 : 0
+b03 = close < vwapVal            ? 1 : 0
+b04 = rsiCur < 50                ? 1 : 0
+b05 = rsiHTF < 50                ? 1 : 0
+b06 = macdLine < macdSigLine     ? 1 : 0
+b07 = macdHist < 0               ? 1 : 0
+b08 = macdHist < macdHist[1]     ? 1 : 0
+b09 = diMinus > diPlus           ? 1 : 0
+b10 = adxVal > adxThresh         ? 1 : 0
+b11 = normVol                    ? 1 : 0
+b12 = highVol                    ? 1 : 0
+b13 = zScore < -0.5              ? 1 : 0
+b14 = close < ema9               ? 1 : 0
+b15 = bearReject                 ? 1 : 0
+b16 = mtfHTFBias < 0             ? 1 : 0
+b17 = tfH4 < 0                   ? 1 : 0
+b18 = tfD1 < 0                   ? 1 : 0
+b19 = mtfBearCnt >= 4            ? 1 : 0
+b20 = scoutBear                  ? 1 : 0
+b21 = bmsBear                    ? 1 : 0
+b22 = not bmsBull                ? 1 : 0
+b23 = bearEngulf                 ? 1 : 0
+b24 = shootStar                  ? 1 : 0
+b25 = not bullReclaim            ? 1 : 0
+b26 = nearRes                    ? 1 : 0
+b27 = rsiCur < 60 and rsiCur > 30 ? 1 : 0
+b28 = close < srMid              ? 1 : 0
+b29 = bearLiqSweep               ? 1 : 0
+b30 = marubBear                  ? 1 : 0
+b31 = bearFlag                   ? 1 : 0
+b32 = brkRetestB                 ? 1 : 0
+b33 = not regimeChop             ? 1 : 0
+b34 = regimeTrend or regimeExpansion ? 1 : 0
+b35 = bodyRatio > 0.5 and close < open ? 1 : 0
+b36 = upperWickRatio < 0.20      ? 1 : 0
+
+bearScore = (b01+b02+b03+b04+b05+b06+b07+b08+b09+b10+b11+b12+b13+b14+b15+b16+b17+b18+
+             b19+b20+b21+b22+b23+b24+b25+b26+b27+b28+b29+b30+b31+b32+b33+b34+b35+b36) * 100 / 36
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 18: ADAPTIVE CONFLUENCE ENGINE (6 weighted factors)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Bull confluence
+trendB    = (f01 + f02 + f14) / 3.0 * 100.0
+momentB   = (f04 + f06 + f07 + f08) / 4.0 * 100.0
+vwapB     = f03 * 100.0
+volB      = (f11 + f12) / 2.0 * 100.0
+htfB      = (f16 + f17 + f18 + f19) / 4.0 * 100.0
+candleB   = (f15 + f35) / 2.0 * 100.0
+
+confluenceBull = (trendB * 25 + momentB * 20 + vwapB * 15 + volB * 15 + htfB * 15 + candleB * 10) / 100.0
+
+// Bear confluence
+trendBr   = (b01 + b02 + b14) / 3.0 * 100.0
+momentBr  = (b04 + b06 + b07 + b08) / 4.0 * 100.0
+vwapBr    = b03 * 100.0
+volBr     = (b11 + b12) / 2.0 * 100.0
+htfBr     = (b16 + b17 + b18 + b19) / 4.0 * 100.0
+candleBr  = (b15 + b35) / 2.0 * 100.0
+
+confluenceBear = (trendBr * 25 + momentBr * 20 + vwapBr * 15 + volBr * 15 + htfBr * 15 + candleBr * 10) / 100.0
+
+// Respect Support Bounce Override
+supBounce = nearSup and bullReclaim and rsiCur > 40
+
+bullSigRaw = confluenceBull >= confThresh
+bearSigRaw = confluenceBear >= confThresh
+
+bullSignal = respectSup and supBounce ? true  : bullSigRaw and not bearSigRaw
+bearSignal = respectSup and supBounce ? false : bearSigRaw and not bullSigRaw
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 19: DYNAMIC TARGET PLANNER (Entry / SL / TP1 / TP2 / TP3)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var float activeSL  = na
+var float activeTP1 = na
+var float activeTP2 = na
+var float activeTP3 = na
+var float entryPx   = na
+var bool  inLong    = false
+var bool  inShort   = false
+var bool  beDone    = false
+
+if bullSignal and not inLong
+    entryPx  := close
+    activeSL  := close - atrHTF * atrMult
+    activeTP1 := close + atrHTF * atrMult * 1.5
+    activeTP2 := close + atrHTF * atrMult * 2.5
+    activeTP3 := close + atrHTF * atrMult * 4.0
+    inLong    := true
+    inShort   := false
+    beDone    := false
+
+if bearSignal and not inShort
+    entryPx  := close
+    activeSL  := close + atrHTF * atrMult
+    activeTP1 := close - atrHTF * atrMult * 1.5
+    activeTP2 := close - atrHTF * atrMult * 2.5
+    activeTP3 := close - atrHTF * atrMult * 4.0
+    inShort   := true
+    inLong    := false
+    beDone    := false
+
+// Breakeven manager
+if inLong and not beDone and not na(activeTP1) and high >= activeTP1
+    activeSL := entryPx
+    beDone   := true
+if inShort and not beDone and not na(activeTP1) and low <= activeTP1
+    activeSL := entryPx
+    beDone   := true
+
+// SL exit
+if inLong  and not na(activeSL) and low  < activeSL
+    inLong   := false
+    activeSL := na
+if inShort and not na(activeSL) and high > activeSL
+    inShort  := false
+    activeSL := na
+
+plot(inLong or inShort ? activeSL  : na, "Stop Loss", color=color.new(color.red,    0), linewidth=1, style=plot.style_linebr)
+plot(inLong or inShort ? activeTP1 : na, "TP 1",      color=color.new(color.lime,  30), linewidth=1, style=plot.style_linebr)
+plot(inLong or inShort ? activeTP2 : na, "TP 2",      color=color.new(color.lime,   0), linewidth=1, style=plot.style_linebr)
+plot(inLong or inShort ? activeTP3 : na, "TP 3",      color=color.new(color.aqua,   0), linewidth=2, style=plot.style_linebr)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 20: 4-LEVEL MARKER HIERARCHY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Level 1: Dot
+dotBull = bullScore >= 50 and macdHist > 0 and normVol
+dotBear = bearScore >= 50 and macdHist < 0 and normVol
+
+// Level 2: Star (Scout confirmed)
+starBull = dotBull and scoutBull
+starBear = dotBear and scoutBear
+
+// Level 3: Arrow (Full confluence)
+arrowBull = starBull and confluenceBull >= confThresh
+arrowBear = starBear and confluenceBear >= confThresh
+
+// Level 4: Diamond (Elite — MTF + high score)
+diamBull = arrowBull and mtfBullCnt >= 5 and bullScore >= 75
+diamBear = arrowBear and mtfBearCnt >= 5 and bearScore >= 75
+
+// Dot Focus Mode — entry lines based on wick extremes of dot candle
+var float dotHigh = na
+var float dotLow  = na
+
+if dotBull
+    dotHigh := high
+    dotLow  := low
+if dotBear
+    dotHigh := high
+    dotLow  := low
+
+plot(showDots and (dotBull or dotBear) ? dotHigh : na, "Dot Buy Stop",  color=color.new(color.lime, 30), style=plot.style_cross, linewidth=1)
+plot(showDots and (dotBull or dotBear) ? dotLow  : na, "Dot Sell Stop", color=color.new(color.red,  30), style=plot.style_cross, linewidth=1)
+
+// Shapes
+plotshape(showDots    and dotBull  and not starBull,  "Dot Buy",     shape.circle,       location.belowbar, color.new(color.lime,  30), size=size.tiny)
+plotshape(showDots    and dotBear  and not starBear,  "Dot Sell",    shape.circle,       location.abovebar, color.new(color.red,   30), size=size.tiny)
+plotshape(showStars   and starBull and not arrowBull, "Star Buy",    shape.cross,        location.belowbar, color.new(color.lime,   0), size=size.small)
+plotshape(showStars   and starBear and not arrowBear, "Star Sell",   shape.cross,        location.abovebar, color.new(color.red,    0), size=size.small)
+plotshape(showArrows  and arrowBull and not diamBull, "Arrow Buy",   shape.triangleup,   location.belowbar, color.new(color.lime,   0), size=size.normal)
+plotshape(showArrows  and arrowBear and not diamBear, "Arrow Sell",  shape.triangledown, location.abovebar, color.new(color.red,    0), size=size.normal)
+plotshape(showDiamonds and diamBull,                  "Diamond Buy", shape.diamond,      location.belowbar, color.new(color.yellow, 0), size=size.large)
+plotshape(showDiamonds and diamBear,                  "Diamond Sell",shape.diamond,      location.abovebar, color.new(color.orange, 0), size=size.large)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 21: FAST-DRAW FIBONACCI ENGINE (with Anchor Lock & Golden Zone)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var float fibHigh   = na
+var float fibLow    = na
+var int   fibDir    = 0
+var bool  fibLocked = false
+var int   fibBarSt  = na
+var box   goldenBox = na
+
+fLvl(pct) =>
+    rng = fibHigh - fibLow
+    fibDir == 1 ? fibLow + rng * pct : fibHigh - rng * pct
+
+if showFib
+    if bmsBull and not na(lastPL) and not na(lastPH) and lastPH > lastPL
+        fibHigh   := lastPH
+        fibLow    := lastPL
+        fibDir    := 1
+        fibLocked := false
+        fibBarSt  := bar_index
+
+    if bmsBear and not na(lastPH) and not na(lastPL) and lastPH > lastPL
+        fibHigh   := lastPH
+        fibLow    := lastPL
+        fibDir    := -1
+        fibLocked := false
+        fibBarSt  := bar_index
+
+    // Anchor lock — prevents repaint
+    if fibDir == 1  and not fibLocked and high > fibHigh
+        fibLocked := true
+    if fibDir == -1 and not fibLocked and low  < fibLow
+        fibLocked := true
+
+    if not na(fibHigh) and not na(fibLow) and barstate.islast
+        f000 = fLvl(0.000)
+        f236 = fLvl(0.236)
+        f382 = fLvl(0.382)
+        f500 = fLvl(0.500)
+        f618 = fLvl(0.618)
+        f786 = fLvl(0.786)
+        f100 = fLvl(1.000)
+
+        endX = bar_index + 12
+
+        line.new(fibBarSt, f000, endX, f000, color=color.new(color.gray,   50), style=line.style_dotted)
+        line.new(fibBarSt, f236, endX, f236, color=color.new(color.blue,   50), style=line.style_dotted)
+        line.new(fibBarSt, f382, endX, f382, color=color.new(color.green,  50), style=line.style_dotted)
+        line.new(fibBarSt, f500, endX, f500, color=color.new(color.yellow, 50), style=line.style_dotted)
+        line.new(fibBarSt, f618, endX, f618, color=color.new(color.orange, 50), style=line.style_dotted)
+        line.new(fibBarSt, f786, endX, f786, color=color.new(color.red,    50), style=line.style_dotted)
+        line.new(fibBarSt, f100, endX, f100, color=color.new(color.gray,   50), style=line.style_dotted)
+
+        label.new(endX, f000, "0.000", color=color.new(color.black, 100), textcolor=color.gray,   size=size.tiny, style=label.style_label_left)
+        label.new(endX, f236, "0.236", color=color.new(color.black, 100), textcolor=color.blue,   size=size.tiny, style=label.style_label_left)
+        label.new(endX, f382, "0.382", color=color.new(color.black, 100), textcolor=color.green,  size=size.tiny, style=label.style_label_left)
+        label.new(endX, f500, "0.500", color=color.new(color.black, 100), textcolor=color.yellow, size=size.tiny, style=label.style_label_left)
+        label.new(endX, f618, "0.618", color=color.new(color.black, 100), textcolor=color.orange, size=size.tiny, style=label.style_label_left)
+        label.new(endX, f786, "0.786", color=color.new(color.black, 100), textcolor=color.red,    size=size.tiny, style=label.style_label_left)
+        label.new(endX, f100, "1.000", color=color.new(color.black, 100), textcolor=color.gray,   size=size.tiny, style=label.style_label_left)
+
+        // Golden Zone auto-fill (0.618 – 0.786)
+        gTop = fibDir == 1 ? f786 : f382
+        gBot = fibDir == 1 ? f618 : f500
+        if not na(goldenBox)
+            box.delete(goldenBox)
+        goldenBox := box.new(fibBarSt, gTop, endX, gBot, bgcolor=color.rgb(255, 215, 0, 72), border_color=color.rgb(255, 215, 0, 20), border_width=1)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 22: 10-CANDLE FUTURE FORECAST (Linear Regression)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+lrLen   = 20
+lrSlope = ta.linreg(close, lrLen, 0) - ta.linreg(close, lrLen, 1)
+
+if showForecast and barstate.islast
+    for i = 1 to 10
+        pPrev = close + lrSlope * (i - 1)
+        pCurr = close + lrSlope * i
+        alpha = 50 + i * 4
+        col   = lrSlope > 0 ? color.new(color.lime, alpha) : color.new(color.red, alpha)
+        line.new(bar_index + i - 1, pPrev, bar_index + i, pCurr, color=col, width=2)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 23: PROJECTED NEXT-CANDLE RIBBON
+// ═══════════════════════════════════════════════════════════════════════════════
+
+if showRibbon and barstate.islast
+    nbStr = confluenceBull > 80 ? "Strong Bull" : confluenceBull > 60 ? "Bull" : confluenceBear > 80 ? "Strong Bear" : confluenceBear > 60 ? "Bear" : "Neutral"
+    nbCol = confluenceBull > 80 ? color.new(color.lime, 0) : confluenceBull > 60 ? color.new(color.green, 20) : confluenceBear > 80 ? color.new(color.red, 0) : confluenceBear > 60 ? color.new(color.orange, 20) : color.new(color.gray, 30)
+    label.new(bar_index + 1, high + atrCur * 0.6, nbStr, color=nbCol, textcolor=color.white, style=label.style_label_down, size=size.small)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SECTION 24: NEXOUS ELITE DASHBOARD
+// ═══════════════════════════════════════════════════════════════════════════════
+
+var table dash = na
+
+cell(c, r, txt, fg, bg) =>
+    table.cell(dash, c, r, txt, text_color=fg, bgcolor=bg, text_size=txtSz, text_halign=text.align_center)
+
+toArrow(v) => v > 0 ? "▲" : "▼"
+
+if showDash
+    if na(dash)
+        dash := table.new(position.top_right, 2, 22, bgcolor=color.new(color.black, 12), border_color=color.new(color.gray, 40), border_width=1, frame_color=color.new(color.blue, 20), frame_width=2)
+
+    // Row 0: Header
+    table.cell(dash, 0, 0, "NEXOUS  ELITE", text_color=color.white, bgcolor=color.new(color.navy, 0), text_size=txtSz, text_halign=text.align_center)
+    table.cell(dash, 1, 0, "v2.0", text_color=color.yellow, bgcolor=color.new(color.navy, 0), text_size=txtSz, text_halign=text.align_center)
+
+    // Row 1: Regime
+    regC = marketRegime == "EXPANSION" ? color.new(color.lime, 20) : marketRegime == "TREND" ? color.new(color.green, 40) : marketRegime == "COMPRESSION" ? color.new(color.orange, 40) : color.new(color.red, 40)
+    cell(0, 1, "REGIME",      color.gray,  color.new(color.black, 30))
+    cell(1, 1, marketRegime,  color.white, regC)
+
+    // Row 2: MTF Bias
+    mtfC = mtfBias == "BULL" ? color.new(color.lime, 30) : mtfBias == "BEAR" ? color.new(color.red, 30) : color.new(color.gray, 30)
+    cell(0, 2, "MTF BIAS",    color.gray,  color.new(color.black, 30))
+    cell(1, 2, mtfBias + " (" + str.tostring(mtfBullCnt) + "/7)", color.white, mtfC)
+
+    // Row 3: 36F Bull Score
+    bsC = bullScore >= 75 ? color.new(color.lime, 10) : bullScore >= 50 ? color.new(color.green, 40) : color.new(color.gray, 50)
+    cell(0, 3, "BULL SCORE",  color.gray, color.new(color.black, 30))
+    cell(1, 3, str.tostring(math.round(bullScore)) + "%", color.white, bsC)
+
+    // Row 4: 36F Bear Score
+    brC = bearScore >= 75 ? color.new(color.red, 10) : bearScore >= 50 ? color.new(color.orange, 40) : color.new(color.gray, 50)
+    cell(0, 4, "BEAR SCORE",  color.gray, color.new(color.black, 30))
+    cell(1, 4, str.tostring(math.round(bearScore)) + "%", color.white, brC)
+
+    // Row 5: Confluence Bull
+    cfBC = confluenceBull >= confThresh ? color.new(color.lime, 25) : color.new(color.black, 30)
+    cell(0, 5, "CONF BULL",   color.gray, color.new(color.black, 30))
+    cell(1, 5, str.tostring(math.round(confluenceBull)) + "%", confluenceBull >= confThresh ? color.lime : color.gray, cfBC)
+
+    // Row 6: Confluence Bear
+    cfBrC = confluenceBear >= confThresh ? color.new(color.red, 25) : color.new(color.black, 30)
+    cell(0, 6, "CONF BEAR",   color.gray, color.new(color.black, 30))
+    cell(1, 6, str.tostring(math.round(confluenceBear)) + "%", confluenceBear >= confThresh ? color.red : color.gray, cfBrC)
+
+    // Row 7: ADX
+    adxStr = str.tostring(math.round(adxVal)) + (hasTrend ? " ▲TREND" : " ─CHOP")
+    adxC   = isBullTrend ? color.new(color.lime, 40) : isBearTrend ? color.new(color.red, 40) : color.new(color.gray, 40)
+    cell(0, 7, "ADX / DMI",   color.gray,  color.new(color.black, 30))
+    cell(1, 7, adxStr,        color.white, adxC)
+
+    // Row 8: RSI
+    rsiStr = str.tostring(math.round(rsiCur))
+    rsiC   = rsiCur > rsiOB ? color.new(color.red, 30) : rsiCur < rsiOS ? color.new(color.lime, 30) : color.new(color.gray, 30)
+    cell(0, 8, "RSI " + str.tostring(rsiLen), color.gray, color.new(color.black, 30))
+    cell(1, 8, rsiStr, color.white, rsiC)
+
+    // Row 9: MACD
+    macdStr = macdHist > 0 ? "BULLISH ▲" : "BEARISH ▼"
+    macdC   = macdHist > 0 ? color.new(color.lime, 40) : color.new(color.red, 40)
+    cell(0, 9, "MACD",        color.gray,  color.new(color.black, 30))
+    cell(1, 9, macdStr,       color.white, macdC)
+
+    // Row 10: VWAP
+    vwStr = close > vwapVal ? "ABOVE ▲" : "BELOW ▼"
+    vwC   = close > vwapVal ? color.new(color.lime, 40) : color.new(color.red, 40)
+    cell(0, 10, "VWAP",       color.gray,  color.new(color.black, 30))
+    cell(1, 10, vwStr,        color.white, vwC)
+
+    // Row 11: Volume
+    volStr = highVol ? "HIGH ▲" : normVol ? "NORMAL" : "LOW ▼"
+    volC   = highVol ? color.new(color.lime, 25) : normVol ? color.new(color.gray, 30) : color.new(color.red, 40)
+    cell(0, 11, "VOLUME",     color.gray,  color.new(color.black, 30))
+    cell(1, 11, volStr,       color.white, volC)
+
+    // Row 12: Z-Score
+    zStr = str.tostring(math.round(zScore * 100) / 100.0)
+    zC   = zScore > 1.5 ? color.new(color.lime, 30) : zScore < -1.5 ? color.new(color.red, 30) : color.new(color.gray, 30)
+    cell(0, 12, "Z-SCORE",    color.gray,  color.new(color.black, 30))
+    cell(1, 12, zStr,         color.white, zC)
+
+    // Row 13: Signal
+    sigStr = diamBull ? "◆ DIAMOND BUY" : diamBear ? "◆ DIAMOND SELL" : arrowBull ? "▲ ARROW BUY" : arrowBear ? "▼ ARROW SELL" : starBull ? "★ STAR BUY" : starBear ? "★ STAR SELL" : dotBull ? "• DOT BUY" : dotBear ? "• DOT SELL" : "— NO SIGNAL"
+    sigC = diamBull or arrowBull or starBull or dotBull ? color.new(color.lime, 20) : diamBear or arrowBear or starBear or dotBear ? color.new(color.red, 20) : color.new(color.gray, 50)
+    cell(0, 13, "SIGNAL",     color.gray,  color.new(color.black, 30))
+    cell(1, 13, sigStr,       color.white, sigC)
+
+    // Row 14: Active Trade
+    tradeStr = inLong ? "LONG  ✓" : inShort ? "SHORT ✓" : "NO TRADE"
+    tradeC   = inLong ? color.new(color.lime, 30) : inShort ? color.new(color.red, 30) : color.new(color.gray, 50)
+    cell(0, 14, "TRADE",      color.gray,  color.new(color.black, 30))
+    cell(1, 14, tradeStr,     color.white, tradeC)
+
+    // Row 15: Stop Loss
+    slStr = not na(activeSL) ? str.tostring(math.round(activeSL * 100) / 100.0) : "—"
+    cell(0, 15, "STOP LOSS",  color.gray, color.new(color.black, 30))
+    cell(1, 15, slStr,        color.red,  color.new(color.black, 30))
+
+    // Row 16: TP1
+    tp1Str = not na(activeTP1) ? str.tostring(math.round(activeTP1 * 100) / 100.0) : "—"
+    cell(0, 16, "TP 1",       color.gray, color.new(color.black, 30))
+    cell(1, 16, tp1Str,       color.lime, color.new(color.black, 30))
+
+    // Row 17: TP2
+    tp2Str = not na(activeTP2) ? str.tostring(math.round(activeTP2 * 100) / 100.0) : "—"
+    cell(0, 17, "TP 2",       color.gray, color.new(color.black, 30))
+    cell(1, 17, tp2Str,       color.lime, color.new(color.black, 30))
+
+    // Row 18: TP3
+    tp3Str = not na(activeTP3) ? str.tostring(math.round(activeTP3 * 100) / 100.0) : "—"
+    cell(0, 18, "TP 3",       color.gray,  color.new(color.black, 30))
+    cell(1, 18, tp3Str,       color.aqua,  color.new(color.black, 30))
+
+    // Row 19: MTF Stack
+    mtfRow = toArrow(tfM5) + "M5 " + toArrow(tfM15) + "M15 " + toArrow(tfM30) + "M30 " + toArrow(tfH1) + "H1"
+    cell(0, 19, "MTF STACK",  color.gray,  color.new(color.black, 30))
+    cell(1, 19, mtfRow,       color.white, color.new(color.black, 30))
+
+    // Row 20: Pattern
+    cell(0, 20, "PATTERN",    color.gray,  color.new(color.black, 30))
+    patStr = bullEngulf ? "Bull Engulf" : bearEngulf ? "Bear Engulf" : hammerCond ? "Hammer" : shootStar ? "Shoot Star" : dblTop ? "Dbl Top" : dblBot ? "Dbl Bottom" : bullFlag ? "Bull Flag" : bearFlag ? "Bear Flag" : bullTrap ? "Bull Trap" : bearTrap ? "Bear Trap" : dojiCond ? "Doji" : "—"
+    cell(1, 20, patStr,       color.white, color.new(color.black, 30))
+
+    // Row 21: Next candle forecast
+    nbStr2 = confluenceBull > 80 ? "Strong Bull ▲▲" : confluenceBull > 60 ? "Bull ▲" : confluenceBear > 80 ? "Strong Bear ▼▼" : confluenceBear > 60 ? "Bear ▼" : "Neutral ─"
+    nbC2 = confluenceBull > 60 ? color.new(color.lime, 30) : confluenceBear > 60 ? color.new(color.red, 30) : color.new(color.gray, 40)
+    cell(0, 21, "NEXT CANDLE", color.gray,  color.new(color.black, 30))
+    cell(1, 21, nbStr2,        color.white, nbC2)
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// END — NEXOUS Elite Trading System v2.0
+// All rights reserved. For educational purposes only.
+// ═══════════════════════════════════════════════════════════════════════════════
