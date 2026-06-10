@@ -1,18 +1,18 @@
 // ╔══════════════════════════════════════════════════════════════════════════╗
-// ║          NEXOUS QUANTUM MASTER SUITE — Pine Script v6                   ║
-// ║  Educational Indicator | Intraday (1m – 15m) | By: Nexous Trading       ║
+// ║                    NEXOUS QUANTUM MASTER SUITE — Pine Script v6          ║
+// ║  Educational Indicator | Intraday (1m – 15m) | By: Nexous Trading        ║
 // ╠══════════════════════════════════════════════════════════════════════════╣
-// ║  Concepts Synthesized:                                                  ║
-// ║   1. Advanced Dashboard & ATR-Based Risk Management  (Weight: 95/100)   ║
-// ║   2. Market Structure — BOS / CHoCH / Breaker Blocks (Weight: 90/100)   ║
-// ║   3. Volume Profile — VWAP Bands + Daily POC         (Weight: 90/100)   ║
-// ║   4. Breakout & Swing Analysis                        (Weight: 85/100)  ║
-// ║   5. Time-Based Killzones (UTC+3 / Cyprus Time)       (Weight: 75/100)  ║
+// ║  Concepts Synthesized:                                                   ║
+// ║   1. Advanced Dashboard & ATR-Based Risk Management  (Weight: 95/100)    ║
+// ║   2. Market Structure — BOS / CHoCH / Breaker Blocks (Weight: 90/100)    ║
+// ║   3. Volume Profile — VWAP Bands + Daily POC         (Weight: 90/100)    ║
+// ║   4. Breakout & Swing Analysis                         (Weight: 85/100)   ║
+// ║   5. Time-Based Killzones (UTC+3 / Cyprus Time)       (Weight: 75/100)   ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 
 //@version=6
 indicator("Nexous Quantum Master Suite", shorttitle="NQMS",
-     overlay    = true,
+     overlay          = true,
      max_lines_count  = 500,
      max_labels_count = 500,
      max_boxes_count  = 500)
@@ -23,7 +23,7 @@ indicator("Nexous Quantum Master Suite", shorttitle="NQMS",
 
 // ── Risk Management ──────────────────────────────────────────
 var string GRP_R = "⚡ ATR & Risk Management"
-i_atr_len   = input.int  (14,    "ATR Length",       minval=1,            group=GRP_R)
+i_atr_len   = input.int  (14,    "ATR Length",       minval=1,        group=GRP_R)
 i_sl_mult   = input.float(1.5,   "SL Multiplier",    step=0.1,            group=GRP_R)
 i_tp1_mult  = input.float(1.0,   "TP1 Multiplier",   step=0.1,            group=GRP_R)
 i_tp2_mult  = input.float(2.0,   "TP2 Multiplier",   step=0.1,            group=GRP_R)
@@ -116,8 +116,9 @@ atr_val = ta.atr(i_atr_len)
 prev_d_high = request.security(syminfo.tickerid, "D", high[1], lookahead=barmerge.lookahead_on)
 prev_d_low  = request.security(syminfo.tickerid, "D", low[1],  lookahead=barmerge.lookahead_on)
 
-ph_raw  = ta.pivothigh(high, i_piv_len, i_piv_len)
-pl_raw  = ta.pivotlow (low,  i_piv_len, i_piv_len)
+ph_raw = ta.pivothigh(high, i_piv_len, i_piv_len)
+pl_raw = ta.pivotlow (low,  i_piv_len, i_piv_len)
+
 sw_high = ta.highest(high, i_sw_len)
 sw_low  = ta.lowest (low,  i_sw_len)
 
@@ -125,11 +126,11 @@ sw_low  = ta.lowest (low,  i_sw_len)
 // ▶  SECTION 5 — VWAP + PREV-DAY H/L PLOTS
 // ════════════════════════════════════════════════════════════
 
-p_vwap = plot(i_show_vwap ? vwap_v  : na, "VWAP",    color=C_VWAP,                 linewidth=2)
-p_vu1  = plot(i_show_vwap ? vwap_u1 : na, "VWAP+1σ", color=color.new(C_VWAP, 50), linewidth=1)
-p_vl1  = plot(i_show_vwap ? vwap_l1 : na, "VWAP-1σ", color=color.new(C_VWAP, 50), linewidth=1)
-p_vu2  = plot(i_show_vwap ? vwap_u2 : na, "VWAP+2σ", color=color.new(C_VWAP, 75), linewidth=1)
-p_vl2  = plot(i_show_vwap ? vwap_l2 : na, "VWAP-2σ", color=color.new(C_VWAP, 75), linewidth=1)
+p_vwap  = plot(i_show_vwap ? vwap_v  : na, "VWAP",    color=C_VWAP,                  linewidth=2)
+p_vu1   = plot(i_show_vwap ? vwap_u1 : na, "VWAP+1σ", color=color.new(C_VWAP, 50), linewidth=1)
+p_vl1   = plot(i_show_vwap ? vwap_l1 : na, "VWAP-1σ", color=color.new(C_VWAP, 50), linewidth=1)
+p_vu2   = plot(i_show_vwap ? vwap_u2 : na, "VWAP+2σ", color=color.new(C_VWAP, 75), linewidth=1)
+p_vl2   = plot(i_show_vwap ? vwap_l2 : na, "VWAP-2σ", color=color.new(C_VWAP, 75), linewidth=1)
 
 fill(p_vu1, p_vl1, color=color.new(C_VWAP, 92), title="VWAP Band 1 Fill")
 fill(p_vu2, p_vl2, color=color.new(C_VWAP, 96), title="VWAP Band 2 Fill")
@@ -151,8 +152,8 @@ if i_show_pdhl and timeframe.change("D")
 // ▶  SECTION 6 — DAILY POINT OF CONTROL (POC)
 // ════════════════════════════════════════════════════════════
 
-var float[] poc_p_bins = array.new_float(0)
-var float[] poc_v_bins = array.new_float(0)
+var float[] poc_p_bins = array.new_float(0)   
+var float[] poc_v_bins = array.new_float(0)   
 var line    poc_line   = na
 var label   poc_lbl    = na
 
@@ -175,7 +176,7 @@ if array.size(poc_v_bins) == i_poc_bins and not is_new_day and not barstate.isfi
     array.set(poc_v_bins, bin_idx, array.get(poc_v_bins, bin_idx) + volume)
 
 if i_show_poc and barstate.islast and array.size(poc_v_bins) > 0
-    int poc_idx = array.indexof(poc_v_bins, array.max(poc_v_bins))
+    int   poc_idx   = array.indexof(poc_v_bins, array.max(poc_v_bins))
     if poc_idx >= 0
         float poc_price = array.get(poc_p_bins, poc_idx)
         if not na(poc_line)
@@ -194,7 +195,7 @@ if i_show_poc and barstate.islast and array.size(poc_v_bins) > 0
 
 var float last_ph = na
 var float last_pl = na
-var bool  ms_bull = true
+var bool  ms_bull = true   
 
 var line[]  smc_lines  = array.new_line(0)
 var label[] smc_labels = array.new_label(0)
@@ -212,49 +213,40 @@ bool choch_dn = false
 if i_show_smc and not na(last_ph) and not na(last_pl)
     if close < last_pl and close[1] >= last_pl
         if ms_bull
-            choch_dn := true
+            choch_dn := true   
             ms_bull  := false
         else
-            bos_dn := true
+            bos_dn := true     
+
     if close > last_ph and close[1] <= last_ph
         if not ms_bull
-            choch_up := true
+            choch_up := true   
             ms_bull  := true
         else
-            bos_up := true
+            bos_up := true     
 
 if i_show_smc
     if bos_up
         ln = line.new(bar_index - 1, last_ph, bar_index, last_ph, color=C_BULL, width=2)
-        lb = label.new(bar_index, last_ph, "BOS ▲",
-             color=color.new(C_BULL, 15), textcolor=C_WHITE,
-             style=label.style_label_down, size=size.small)
+        lb = label.new(bar_index, last_ph, "BOS ▲", color=color.new(C_BULL, 15), textcolor=C_WHITE, style=label.style_label_down, size=size.small)
         array.push(smc_lines, ln)
         array.push(smc_labels, lb)
 
     if bos_dn
         ln = line.new(bar_index - 1, last_pl, bar_index, last_pl, color=C_BEAR, width=2)
-        lb = label.new(bar_index, last_pl, "BOS ▼",
-             color=color.new(C_BEAR, 15), textcolor=C_WHITE,
-             style=label.style_label_up, size=size.small)
+        lb = label.new(bar_index, last_pl, "BOS ▼", color=color.new(C_BEAR, 15), textcolor=C_WHITE, style=label.style_label_up, size=size.small)
         array.push(smc_lines, ln)
         array.push(smc_labels, lb)
 
     if choch_up
-        ln = line.new(bar_index - 1, last_ph, bar_index, last_ph,
-             color=C_GOLD, width=2, style=line.style_dashed)
-        lb = label.new(bar_index, last_ph, "CHoCH ▲",
-             color=color.new(C_GOLD, 15), textcolor=color.black,
-             style=label.style_label_down, size=size.small)
+        ln = line.new(bar_index - 1, last_ph, bar_index, last_ph, color=C_GOLD, width=2, style=line.style_dashed)
+        lb = label.new(bar_index, last_ph, "CHoCH ▲", color=color.new(C_GOLD, 15), textcolor=color.black, style=label.style_label_down, size=size.small)
         array.push(smc_lines, ln)
         array.push(smc_labels, lb)
 
     if choch_dn
-        ln = line.new(bar_index - 1, last_pl, bar_index, last_pl,
-             color=C_GOLD, width=2, style=line.style_dashed)
-        lb = label.new(bar_index, last_pl, "CHoCH ▼",
-             color=color.new(C_GOLD, 15), textcolor=color.black,
-             style=label.style_label_up, size=size.small)
+        ln = line.new(bar_index - 1, last_pl, bar_index, last_pl, color=C_GOLD, width=2, style=line.style_dashed)
+        lb = label.new(bar_index, last_pl, "CHoCH ▼", color=color.new(C_GOLD, 15), textcolor=color.black, style=label.style_label_up, size=size.small)
         array.push(smc_lines, ln)
         array.push(smc_labels, lb)
 
@@ -268,35 +260,24 @@ if i_show_smc
 // ════════════════════════════════════════════════════════════
 
 var box[] brk_boxes = array.new_box(0)
-var line  pd_eq_ln  = na
+var line  pd_eq_ln  = na   
 
 bool any_struct_break = bos_up or bos_dn or choch_up or choch_dn
 
 if i_show_brk and any_struct_break
     if bos_up or choch_up
-        bx = box.new(
-             bar_index - i_piv_len,
-             last_pl + atr_val * 0.35,
-             bar_index + 4,
-             last_pl - atr_val * 0.15,
-             bgcolor=color.new(C_BULL, 83), border_color=C_BULL, border_width=1)
+        bx = box.new(bar_index - i_piv_len, last_pl + atr_val * 0.35, bar_index + 4, last_pl - atr_val * 0.15, bgcolor = color.new(C_BULL, 83), border_color = C_BULL, border_width = 1)
         array.push(brk_boxes, bx)
 
     if bos_dn or choch_dn
-        bx = box.new(
-             bar_index - i_piv_len,
-             last_ph + atr_val * 0.15,
-             bar_index + 4,
-             last_ph - atr_val * 0.35,
-             bgcolor=color.new(C_BEAR, 83), border_color=C_BEAR, border_width=1)
+        bx = box.new(bar_index - i_piv_len, last_ph + atr_val * 0.15, bar_index + 4, last_ph - atr_val * 0.35, bgcolor = color.new(C_BEAR, 83), border_color = C_BEAR, border_width = 1)
         array.push(brk_boxes, bx)
 
     if not na(last_ph) and not na(last_pl)
         if not na(pd_eq_ln)
             line.delete(pd_eq_ln)
         float eq = (last_ph + last_pl) / 2.0
-        pd_eq_ln := line.new(bar_index - i_piv_len, eq, bar_index + 20, eq,
-             color=color.new(C_GRAY, 55), style=line.style_dotted, width=1)
+        pd_eq_ln := line.new(bar_index - i_piv_len, eq, bar_index + 20, eq, color=color.new(C_GRAY, 55), style=line.style_dotted, width=1)
 
     while array.size(brk_boxes) > i_max_brk
         box.delete(array.shift(brk_boxes))
@@ -305,35 +286,21 @@ if i_show_brk and any_struct_break
 // ▶  SECTION 9 — BREAKOUT ZONES
 // ════════════════════════════════════════════════════════════
 
-var box[]   bo_boxes  = array.new_box(0)
+var box[]  bo_boxes  = array.new_box(0)
 var label[] bo_labels = array.new_label(0)
 
 bool bo_up = i_show_bo and close > sw_high[1] and close[1] <= sw_high[1]
 bool bo_dn = i_show_bo and close < sw_low[1]  and close[1] >= sw_low[1]
 
 if bo_up
-    bx = box.new(
-         bar_index - i_sw_len,
-         sw_high[1] + atr_val * 0.15,
-         bar_index,
-         sw_high[1] - atr_val * 0.15,
-         bgcolor=color.new(C_BULL, 83), border_color=C_BULL, border_width=1)
-    lb = label.new(bar_index, sw_high[1] + atr_val * 0.5, "BREAKOUT ▲",
-         color=color.new(C_BULL, 10), textcolor=C_WHITE,
-         style=label.style_label_down, size=size.small)
+    bx = box.new(bar_index - i_sw_len, sw_high[1] + atr_val * 0.15, bar_index, sw_high[1] - atr_val * 0.15, bgcolor=color.new(C_BULL, 83), border_color=C_BULL, border_width=1)
+    lb = label.new(bar_index, sw_high[1] + atr_val * 0.5, "BREAKOUT ▲", color=color.new(C_BULL, 10), textcolor=C_WHITE, style=label.style_label_down, size=size.small)
     array.push(bo_boxes, bx)
     array.push(bo_labels, lb)
 
 if bo_dn
-    bx = box.new(
-         bar_index - i_sw_len,
-         sw_low[1] + atr_val * 0.15,
-         bar_index,
-         sw_low[1] - atr_val * 0.15,
-         bgcolor=color.new(C_BEAR, 83), border_color=C_BEAR, border_width=1)
-    lb = label.new(bar_index, sw_low[1] - atr_val * 0.5, "BREAKOUT ▼",
-         color=color.new(C_BEAR, 10), textcolor=C_WHITE,
-         style=label.style_label_up, size=size.small)
+    bx = box.new(bar_index - i_sw_len, sw_low[1] + atr_val * 0.15, bar_index, sw_low[1] - atr_val * 0.15, bgcolor=color.new(C_BEAR, 83), border_color=C_BEAR, border_width=1)
+    lb = label.new(bar_index, sw_low[1] - atr_val * 0.5, "BREAKOUT ▼", color=color.new(C_BEAR, 10), textcolor=C_WHITE, style=label.style_label_up, size=size.small)
     array.push(bo_boxes, bx)
     array.push(bo_labels, lb)
 
@@ -354,7 +321,7 @@ lon_full_t = time(timeframe.period, "1000-1830",  "GMT+0300")
 ny_full_t  = time(timeframe.period, "1630-2300",  "GMT+0300")
 
 bool in_lon_kz  = not na(kz_lon_t)
-bool in_ny_kz   = not na(kz_ny_t)
+bool in_ny_kz    = not na(kz_ny_t)
 bool in_overlap = not na(overlap_t)
 bool in_asia    = not na(asia_t)
 bool in_lon_f   = not na(lon_full_t)
@@ -377,12 +344,10 @@ if in_lon_kz
     kz_l_lo := na(kz_l_lo) ? low  : math.min(kz_l_lo, low)
 else if kz_l_was and i_show_kz
     if (bos_up or choch_up) and not na(kz_l_hi) and close > kz_l_hi
-        lb = label.new(bar_index, close + atr_val * 1.2, "LDN BREAK ▲\n+ BOS",
-             color=C_GOLD, textcolor=color.black, style=label.style_label_down, size=size.small)
+        lb = label.new(bar_index, close + atr_val * 1.2, "LDN BREAK ▲\n+ BOS", color=C_GOLD, textcolor=color.black, style=label.style_label_down, size=size.small)
         array.push(kz_labels, lb)
     if (bos_dn or choch_dn) and not na(kz_l_lo) and close < kz_l_lo
-        lb = label.new(bar_index, close - atr_val * 1.2, "LDN BREAK ▼\n+ BOS",
-             color=C_GOLD, textcolor=color.black, style=label.style_label_up, size=size.small)
+        lb = label.new(bar_index, close - atr_val * 1.2, "LDN BREAK ▼\n+ BOS", color=C_GOLD, textcolor=color.black, style=label.style_label_up, size=size.small)
         array.push(kz_labels, lb)
     kz_l_hi := na
     kz_l_lo := na
@@ -392,12 +357,10 @@ if in_ny_kz
     kz_n_lo := na(kz_n_lo) ? low  : math.min(kz_n_lo, low)
 else if kz_n_was and i_show_kz
     if (bos_up or choch_up) and not na(kz_n_hi) and close > kz_n_hi
-        lb = label.new(bar_index, close + atr_val * 1.2, "NY BREAK ▲\n+ BOS",
-             color=C_GOLD, textcolor=color.black, style=label.style_label_down, size=size.small)
+        lb = label.new(bar_index, close + atr_val * 1.2, "NY BREAK ▲\n+ BOS", color=C_GOLD, textcolor=color.black, style=label.style_label_down, size=size.small)
         array.push(kz_labels, lb)
     if (bos_dn or choch_dn) and not na(kz_n_lo) and close < kz_n_lo
-        lb = label.new(bar_index, close - atr_val * 1.2, "NY BREAK ▼\n+ BOS",
-             color=C_GOLD, textcolor=color.black, style=label.style_label_up, size=size.small)
+        lb = label.new(bar_index, close - atr_val * 1.2, "NY BREAK ▼\n+ BOS", color=C_GOLD, textcolor=color.black, style=label.style_label_up, size=size.small)
         array.push(kz_labels, lb)
     kz_n_hi := na
     kz_n_lo := na
@@ -409,61 +372,57 @@ while array.size(kz_labels) > 20
     label.delete(array.shift(kz_labels))
 
 // ════════════════════════════════════════════════════════════
-// ▶  SECTION 11 — ATR-BASED R:R BOXES (drawn on last bar)
+// ▶  SECTION 11 — DYNAMIC ATR-BASED R:R BOXES (drawn on last bar)
 // ════════════════════════════════════════════════════════════
 
-var box   rr_sl_bx  = na
-var box   rr_tp1_bx = na
-var box   rr_tp2_bx = na
-var box   rr_tp3_bx = na
+var box  rr_sl_bx  = na
+var box  rr_tp1_bx = na
+var box  rr_tp2_bx = na
+var box  rr_tp3_bx = na
 var label rr_lbl    = na
 
 if i_show_rr and barstate.islast
-    // ✅ FIX: each delete on its own indented line (box is a reserved type keyword)
-    if not na(rr_sl_bx)
-        box.delete(rr_sl_bx)
-    if not na(rr_tp1_bx)
-        box.delete(rr_tp1_bx)
-    if not na(rr_tp2_bx)
-        box.delete(rr_tp2_bx)
-    if not na(rr_tp3_bx)
-        box.delete(rr_tp3_bx)
-    if not na(rr_lbl)
-        label.delete(rr_lbl)
+    box.delete(rr_sl_bx)
+    box.delete(rr_tp1_bx)
+    box.delete(rr_tp2_bx)
+    box.delete(rr_tp3_bx)
+    label.delete(rr_lbl)
 
     float e   = close
-    float sl  = e - atr_val * i_sl_mult
-    float tp1 = e + atr_val * i_tp1_mult
-    float tp2 = e + atr_val * i_tp2_mult
-    float tp3 = e + atr_val * i_tp3_mult
     int   x1  = bar_index
     int   x2  = bar_index + 8
 
-    rr_sl_bx  := box.new(x1, e,   x2, sl,  bgcolor=color.new(C_BEAR, 68), border_color=C_BEAR, border_width=1)
-    rr_tp1_bx := box.new(x1, tp1, x2, e,   bgcolor=color.new(C_BULL, 78), border_color=C_BULL, border_width=1)
-    rr_tp2_bx := box.new(x1, tp2, x2, tp1, bgcolor=color.new(C_BULL, 84), border_color=C_BULL, border_width=1)
-    rr_tp3_bx := box.new(x1, tp3, x2, tp2, bgcolor=color.new(C_BULL, 90), border_color=C_BULL, border_width=1)
+    float sl  = ms_bull ? (e - atr_val * i_sl_mult)  : (e + atr_val * i_sl_mult)
+    float tp1 = ms_bull ? (e + atr_val * i_tp1_mult) : (e - atr_val * i_tp1_mult)
+    float tp2 = ms_bull ? (e + atr_val * i_tp2_mult) : (e - atr_val * i_tp2_mult)
+    float tp3 = ms_bull ? (e + atr_val * i_tp3_mult) : (e - atr_val * i_tp3_mult)
+
+    if ms_bull
+        rr_sl_bx  := box.new(x1, e,   x2, sl,  bgcolor=color.new(C_BEAR, 68), border_color=C_BEAR, border_width=1)
+        rr_tp1_bx := box.new(x1, tp1, x2, e,   bgcolor=color.new(C_BULL, 78), border_color=C_BULL, border_width=1)
+        rr_tp2_bx := box.new(x1, tp2, x2, tp1, bgcolor=color.new(C_BULL, 84), border_color=C_BULL, border_width=1)
+        rr_tp3_bx := box.new(x1, tp3, x2, tp2, bgcolor=color.new(C_BULL, 90), border_color=C_BULL, border_width=1)
+    else
+        rr_sl_bx  := box.new(x1, sl,  x2, e,   bgcolor=color.new(C_BEAR, 68), border_color=C_BEAR, border_width=1)
+        rr_tp1_bx := box.new(x1, e,   x2, tp1, bgcolor=color.new(C_BULL, 78), border_color=C_BULL, border_width=1)
+        rr_tp2_bx := box.new(x1, tp1, x2, tp2, bgcolor=color.new(C_BULL, 84), border_color=C_BULL, border_width=1)
+        rr_tp3_bx := box.new(x1, tp2, x2, tp3, bgcolor=color.new(C_BULL, 90), border_color=C_BULL, border_width=1)
 
     float rr1 = i_tp1_mult / i_sl_mult
     float rr2 = i_tp2_mult / i_sl_mult
     float rr3 = i_tp3_mult / i_sl_mult
 
-    rr_lbl := label.new(x2, tp3,
-         " SL  : " + str.tostring(sl,  format.mintick) + "\n" +
-         " TP1 : " + str.tostring(tp1, format.mintick) + "  (1:" + str.tostring(rr1, "#.#") + ")\n" +
-         " TP2 : " + str.tostring(tp2, format.mintick) + "  (1:" + str.tostring(rr2, "#.#") + ")\n" +
-         " TP3 : " + str.tostring(tp3, format.mintick) + "  (1:" + str.tostring(rr3, "#.#") + ")",
-         color=C_BG, textcolor=C_WHITE, style=label.style_label_left, size=size.small)
+    rr_lbl := label.new(x2, ms_bull ? tp3 : e, " SL  : " + str.tostring(sl, format.mintick) + "\n" + " TP1 : " + str.tostring(tp1, format.mintick) + "  (1:" + str.tostring(rr1, "#.#") + ")\n" + " TP2 : " + str.tostring(tp2, format.mintick) + "  (1:" + str.tostring(rr2, "#.#") + ")\n" + " TP3 : " + str.tostring(tp3, format.mintick) + "  (1:" + str.tostring(rr3, "#.#") + ")", color=C_BG, textcolor=C_WHITE, style=label.style_label_left, size=size.small)
 
 // ════════════════════════════════════════════════════════════
-// ▶  SECTION 12 — SESSION STATUS STRING
+// ▶  SECTION 12 — SESSION STATUS STRING (for dashboard)
 // ════════════════════════════════════════════════════════════
 
 string sess_str =
      in_overlap ? "GOLDEN OVERLAP" :
      in_ny_f    ? "NEW YORK"       :
      in_lon_f   ? "LONDON"         :
-     in_asia    ? "ASIA"           : "OFF-MARKET"
+     in_asia    ? "ASIA"            : "OFF-MARKET"
 
 color sess_col =
      in_overlap ? C_OVERLAP :
@@ -483,80 +442,54 @@ if barstate.islast
 
     dash_tbl := table.new(
          f_tpos(), 2, 13,
-         bgcolor=C_BG,
-         border_color=color.new(#334488, 0), border_width=1,
-         frame_color=color.new(#4466BB, 0),  frame_width=2)
+         bgcolor      = C_BG,
+         border_color = color.new(#334488, 0),
+         border_width = 1,
+         frame_color  = color.new(#4466BB, 0),
+         frame_width  = 2)
 
-    ts = f_tsize()
+    ts = f_tsize()   
 
-    table.cell(dash_tbl, 0, 0, "  NEXOUS QUANTUM MASTER SUITE  ",
-         bgcolor=C_HDR, text_color=C_GOLD, text_size=ts, text_halign=text.align_center)
+    table.cell(dash_tbl, 0, 0, "  NEXOUS QUANTUM MASTER SUITE  ", bgcolor=C_HDR, text_color=C_GOLD, text_size=ts, text_halign=text.align_center)
     table.cell(dash_tbl, 1, 0, "", bgcolor=C_HDR)
     table.merge_cells(dash_tbl, 0, 0, 1, 0)
 
-    table.cell(dash_tbl, 0, 1, " SESSION",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 1, sess_str + " ",
-         bgcolor=C_BG, text_color=sess_col, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 1, " SESSION", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 1, sess_str + " ", bgcolor=C_BG, text_color=sess_col, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 2, " ATR (" + str.tostring(i_atr_len) + ")",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 2, str.tostring(atr_val, format.mintick) + " ",
-         bgcolor=C_BG, text_color=C_WHITE, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 2, " ATR (" + str.tostring(i_atr_len) + ")", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 2, str.tostring(atr_val, format.mintick) + " ", bgcolor=C_BG, text_color=C_WHITE, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 3, " POSITION SIZE",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 3, str.tostring(i_pos_size, "#.##") + " ",
-         bgcolor=C_BG, text_color=C_GOLD, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 3, " POSITION SIZE", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 3, str.tostring(i_pos_size, "#.##") + " ", bgcolor=C_BG, text_color=C_GOLD, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 4, " R:R RATIO",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 4, "1 : " + str.tostring(i_tp2_mult / i_sl_mult, "#.#") + " ",
-         bgcolor=C_BG, text_color=C_BULL, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 4, " R:R RATIO", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 4, "1 : " + str.tostring(i_tp2_mult / i_sl_mult, "#.#") + " ", bgcolor=C_BG, text_color=C_BULL, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 5, " STOP LOSS",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 5, str.tostring(close - atr_val * i_sl_mult, format.mintick) + " ",
-         bgcolor=C_BG, text_color=C_BEAR, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 5, " STOP LOSS", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 5, str.tostring(close - atr_val * i_sl_mult, format.mintick) + " ", bgcolor=C_BG, text_color=C_BEAR, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 6, " TP1 / TP2 / TP3",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 6,
-         str.tostring(close + atr_val * i_tp1_mult, format.mintick) + " / " +
-         str.tostring(close + atr_val * i_tp2_mult, format.mintick) + " / " +
-         str.tostring(close + atr_val * i_tp3_mult, format.mintick) + " ",
-         bgcolor=C_BG, text_color=C_BULL, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 6, " TP1 / TP2 / TP3", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 6, str.tostring(close + atr_val * i_tp1_mult, format.mintick) + " / " + str.tostring(close + atr_val * i_tp2_mult, format.mintick) + " / " + str.tostring(close + atr_val * i_tp3_mult, format.mintick) + " ", bgcolor=C_BG, text_color=C_BULL, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 7, " BIAS",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 7, ms_bull ? "BULLISH ▲ " : "BEARISH ▼ ",
-         bgcolor=C_BG, text_color=ms_bull ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 7, " BIAS", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 7, ms_bull ? "BULLISH ▲ " : "BEARISH ▼ ", bgcolor=C_BG, text_color=ms_bull ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 8, "─────── ACTIVE TOOLS ───────",
-         bgcolor=C_HDR, text_color=color.new(#4466BB, 0),
-         text_size=ts, text_halign=text.align_center)
+    table.cell(dash_tbl, 0, 8, "─────── ACTIVE TOOLS ───────", bgcolor=C_HDR, text_color=color.new(#4466BB, 0), text_size=ts, text_halign=text.align_center)
     table.cell(dash_tbl, 1, 8, "", bgcolor=C_HDR)
     table.merge_cells(dash_tbl, 0, 8, 1, 8)
 
-    table.cell(dash_tbl, 0, 9,  " SMC (BOS/CHoCH)",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 9,  i_show_smc  ? "ON  ✓ " : "OFF ✗ ",
-         bgcolor=C_BG, text_color=i_show_smc  ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 9,  " SMC (BOS/CHoCH)", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 9,  i_show_smc  ? "ON  ✓ " : "OFF ✗ ", bgcolor=C_BG, text_color=i_show_smc  ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 10, " VWAP + Bands",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 10, i_show_vwap ? "ON  ✓ " : "OFF ✗ ",
-         bgcolor=C_BG, text_color=i_show_vwap ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 10, " VWAP + Bands", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 10, i_show_vwap ? "ON  ✓ " : "OFF ✗ ", bgcolor=C_BG, text_color=i_show_vwap ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 11, " POC",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 11, i_show_poc  ? "ON  ✓ " : "OFF ✗ ",
-         bgcolor=C_BG, text_color=i_show_poc  ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 11, " POC", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 11, i_show_poc  ? "ON  ✓ " : "OFF ✗ ", bgcolor=C_BG, text_color=i_show_poc  ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
 
-    table.cell(dash_tbl, 0, 12, " Killzones",
-         bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
-    table.cell(dash_tbl, 1, 12, i_show_kz   ? "ON  ✓ " : "OFF ✗ ",
-         bgcolor=C_BG, text_color=i_show_kz   ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
+    table.cell(dash_tbl, 0, 12, " Killzones", bgcolor=C_BG, text_color=C_GRAY, text_size=ts, text_halign=text.align_left)
+    table.cell(dash_tbl, 1, 12, i_show_kz   ? "ON  ✓ " : "OFF ✗ ", bgcolor=C_BG, text_color=i_show_kz   ? C_BULL : C_BEAR, text_size=ts, text_halign=text.align_right)
 
 // ════════════════════════════════════════════════════════════
 // END OF NEXOUS QUANTUM MASTER SUITE
