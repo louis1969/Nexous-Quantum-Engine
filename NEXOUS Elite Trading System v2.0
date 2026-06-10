@@ -233,9 +233,9 @@ if not na(pivotLow)
 msbBull = not na(lastPH) and high > lastPH and close < lastPH
 msbBear = not na(lastPL) and low  < lastPL and close > lastPL
 
-// BMS: body-close confirms break
-bmsBull = not na(lastPH) and close > lastPH
-bmsBear = not na(lastPL) and close < lastPL
+// BMS: body-close confirms break (FIXED: edge trigger to avoid spamming)
+bmsBull = not na(lastPH) and close > lastPH and close[1] <= lastPH
+bmsBear = not na(lastPL) and close < lastPL and close[1] >= lastPL
 
 if msbBull
     label.new(bar_index, low, "MSB↑", color=color.new(color.lime, 50),
@@ -833,6 +833,9 @@ fLvl(pct) =>
     rng = fibHigh - fibLow
     fibDir == 1 ? fibLow + rng * pct : fibHigh - rng * pct
 
+var line[] fib_lines = array.new_line(0)
+var label[] fib_labels = array.new_label(0)
+
 if showFib
     if bmsBull and not na(lastPL) and not na(lastPH) and lastPH > lastPL
         fibHigh   := lastPH
@@ -855,6 +858,14 @@ if showFib
         fibLocked := true
 
     if not na(fibHigh) and not na(fibLow) and barstate.islast
+        if array.size(fib_lines) > 0
+            for ln in fib_lines
+                line.delete(ln)
+            array.clear(fib_lines)
+        if array.size(fib_labels) > 0
+            for lb in fib_labels
+                label.delete(lb)
+            array.clear(fib_labels)
         f000 = fLvl(0.000)
         f236 = fLvl(0.236)
         f382 = fLvl(0.382)
@@ -865,21 +876,35 @@ if showFib
 
         endX = bar_index + 12
 
-        line.new(fibBarSt, f000, endX, f000, color=color.new(color.gray,   50), style=line.style_dotted)
-        line.new(fibBarSt, f236, endX, f236, color=color.new(color.blue,   50), style=line.style_dotted)
-        line.new(fibBarSt, f382, endX, f382, color=color.new(color.green,  50), style=line.style_dotted)
-        line.new(fibBarSt, f500, endX, f500, color=color.new(color.yellow, 50), style=line.style_dotted)
-        line.new(fibBarSt, f618, endX, f618, color=color.new(color.orange, 50), style=line.style_dotted)
-        line.new(fibBarSt, f786, endX, f786, color=color.new(color.red,    50), style=line.style_dotted)
-        line.new(fibBarSt, f100, endX, f100, color=color.new(color.gray,   50), style=line.style_dotted)
+        ln_fib = line.new(fibBarSt, f000, endX, f000, color=color.new(color.gray,   50), style=line.style_dotted)
+        array.push(fib_lines, ln_fib)
+        ln_fib = line.new(fibBarSt, f236, endX, f236, color=color.new(color.blue,   50), style=line.style_dotted)
+        array.push(fib_lines, ln_fib)
+        ln_fib = line.new(fibBarSt, f382, endX, f382, color=color.new(color.green,  50), style=line.style_dotted)
+        array.push(fib_lines, ln_fib)
+        ln_fib = line.new(fibBarSt, f500, endX, f500, color=color.new(color.yellow, 50), style=line.style_dotted)
+        array.push(fib_lines, ln_fib)
+        ln_fib = line.new(fibBarSt, f618, endX, f618, color=color.new(color.orange, 50), style=line.style_dotted)
+        array.push(fib_lines, ln_fib)
+        ln_fib = line.new(fibBarSt, f786, endX, f786, color=color.new(color.red,    50), style=line.style_dotted)
+        array.push(fib_lines, ln_fib)
+        ln_fib = line.new(fibBarSt, f100, endX, f100, color=color.new(color.gray,   50), style=line.style_dotted)
+        array.push(fib_lines, ln_fib)
 
-        label.new(endX, f000, "0.000", color=color.new(color.black, 100), textcolor=color.gray,   size=size.tiny, style=label.style_label_left)
-        label.new(endX, f236, "0.236", color=color.new(color.black, 100), textcolor=color.blue,   size=size.tiny, style=label.style_label_left)
-        label.new(endX, f382, "0.382", color=color.new(color.black, 100), textcolor=color.green,  size=size.tiny, style=label.style_label_left)
-        label.new(endX, f500, "0.500", color=color.new(color.black, 100), textcolor=color.yellow, size=size.tiny, style=label.style_label_left)
-        label.new(endX, f618, "0.618", color=color.new(color.black, 100), textcolor=color.orange, size=size.tiny, style=label.style_label_left)
-        label.new(endX, f786, "0.786", color=color.new(color.black, 100), textcolor=color.red,    size=size.tiny, style=label.style_label_left)
-        label.new(endX, f100, "1.000", color=color.new(color.black, 100), textcolor=color.gray,   size=size.tiny, style=label.style_label_left)
+        lb_fib = label.new(endX, f000, "0.000", color=color.new(color.black, 100), textcolor=color.gray,   size=size.tiny, style=label.style_label_left)
+        array.push(fib_labels, lb_fib)
+        lb_fib = label.new(endX, f236, "0.236", color=color.new(color.black, 100), textcolor=color.blue,   size=size.tiny, style=label.style_label_left)
+        array.push(fib_labels, lb_fib)
+        lb_fib = label.new(endX, f382, "0.382", color=color.new(color.black, 100), textcolor=color.green,  size=size.tiny, style=label.style_label_left)
+        array.push(fib_labels, lb_fib)
+        lb_fib = label.new(endX, f500, "0.500", color=color.new(color.black, 100), textcolor=color.yellow, size=size.tiny, style=label.style_label_left)
+        array.push(fib_labels, lb_fib)
+        lb_fib = label.new(endX, f618, "0.618", color=color.new(color.black, 100), textcolor=color.orange, size=size.tiny, style=label.style_label_left)
+        array.push(fib_labels, lb_fib)
+        lb_fib = label.new(endX, f786, "0.786", color=color.new(color.black, 100), textcolor=color.red,    size=size.tiny, style=label.style_label_left)
+        array.push(fib_labels, lb_fib)
+        lb_fib = label.new(endX, f100, "1.000", color=color.new(color.black, 100), textcolor=color.gray,   size=size.tiny, style=label.style_label_left)
+        array.push(fib_labels, lb_fib)
 
         // Golden Zone auto-fill (0.618 – 0.786)
         gTop = fibDir == 1 ? f786 : f382
@@ -895,22 +920,31 @@ if showFib
 lrLen   = 20
 lrSlope = ta.linreg(close, lrLen, 0) - ta.linreg(close, lrLen, 1)
 
+var line[] fc_lines = array.new_line(0)
 if showForecast and barstate.islast
+    if array.size(fc_lines) > 0
+        for ln in fc_lines
+            line.delete(ln)
+        array.clear(fc_lines)
     for i = 1 to 10
         pPrev = close + lrSlope * (i - 1)
         pCurr = close + lrSlope * i
         alpha = 50 + i * 4
         col   = lrSlope > 0 ? color.new(color.lime, alpha) : color.new(color.red, alpha)
-        line.new(bar_index + i - 1, pPrev, bar_index + i, pCurr, color=col, width=2)
+        fc_ln = line.new(bar_index + i - 1, pPrev, bar_index + i, pCurr, color=col, width=2)
+        array.push(fc_lines, fc_ln)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 23: PROJECTED NEXT-CANDLE RIBBON
 // ═══════════════════════════════════════════════════════════════════════════════
 
+var label rib_lbl = na
 if showRibbon and barstate.islast
+    if not na(rib_lbl)
+        label.delete(rib_lbl)
     nbStr = confluenceBull > 80 ? "Strong Bull" : confluenceBull > 60 ? "Bull" : confluenceBear > 80 ? "Strong Bear" : confluenceBear > 60 ? "Bear" : "Neutral"
     nbCol = confluenceBull > 80 ? color.new(color.lime, 0) : confluenceBull > 60 ? color.new(color.green, 20) : confluenceBear > 80 ? color.new(color.red, 0) : confluenceBear > 60 ? color.new(color.orange, 20) : color.new(color.gray, 30)
-    label.new(bar_index + 1, high + atrCur * 0.6, nbStr, color=nbCol, textcolor=color.white, style=label.style_label_down, size=size.small)
+    rib_lbl := label.new(bar_index + 1, high + atrCur * 0.6, nbStr, color=nbCol, textcolor=color.white, style=label.style_label_down, size=size.small)
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SECTION 24: NEXOUS ELITE DASHBOARD
